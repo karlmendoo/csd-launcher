@@ -47,14 +47,14 @@ public class FancyLauncherFrame extends LauncherFrame {
     private final Icon downloadIcon = SwingHelper.createIcon(Launcher.class, "download_icon.png", 16, 16);
     
     // Custom colors - Modern palette
-    private static final Color GLASS_COLOR = new Color(20, 20, 20, 217); // rgba(20, 20, 20, 0.85)
+    private static final Color GLASS_COLOR = new Color(20, 20, 20, (int)(0.85 * 255)); // rgba(20, 20, 20, 0.85)
     private static final Color HOVER_COLOR = new Color(255, 255, 255, 20); // rgba(255, 255, 255, 0.08)
     private static final Color PRIMARY_BLUE = new Color(0, 120, 212); // #0078D4
     private static final Color SUCCESS_GREEN = new Color(40, 167, 69); // #28a745
     private static final Color WARNING_ORANGE = new Color(253, 126, 20); // #fd7e14
     private static final Color TEXT_PRIMARY = new Color(255, 255, 255); // #FFFFFF
     private static final Color TEXT_SECONDARY = new Color(176, 176, 176); // #B0B0B0
-    private static final Color BORDER_SUBTLE = new Color(255, 255, 255, 26); // rgba(255, 255, 255, 0.1)
+    private static final Color BORDER_SUBTLE = new Color(255, 255, 255, (int)(0.1 * 255)); // rgba(255, 255, 255, 0.1)
 
     /**
      * Create a new frame.

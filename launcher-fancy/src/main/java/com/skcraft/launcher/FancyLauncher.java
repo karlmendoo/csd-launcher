@@ -106,16 +106,15 @@ public class FancyLauncher {
         
         // Check which fonts are available
         GraphicsEnvironment ge = GraphicsEnvironment.getLocalGraphicsEnvironment();
-        String[] availableFonts = ge.getAvailableFontFamilyNames();
+        java.util.Set<String> availableFonts = new java.util.HashSet<>(
+            java.util.Arrays.asList(ge.getAvailableFontFamilyNames())
+        );
         
         for (String font : preferredFonts) {
-            for (String available : availableFonts) {
-                if (available.equalsIgnoreCase(font)) {
-                    selectedFont = font;
-                    break;
-                }
+            if (availableFonts.contains(font)) {
+                selectedFont = font;
+                break;
             }
-            if (!selectedFont.equals(Font.SANS_SERIF)) break;
         }
         
         final FontUIResource controlFont = new FontUIResource(selectedFont, Font.PLAIN, 13);
