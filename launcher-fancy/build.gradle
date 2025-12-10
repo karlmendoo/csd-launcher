@@ -15,13 +15,6 @@ application {
     mainClassName = "com.skcraft.launcher.FancyLauncher"
 }
 
-repositories {
-    maven {
-        name = 'bbkr.space maven'
-        url = 'https://server.bbkr.space/artifactory/libs-snapshot'
-    }
-}
-
 dependencies {
     implementation project(path: ':launcher')
     implementation 'com.formdev:flatlaf:3.4'
