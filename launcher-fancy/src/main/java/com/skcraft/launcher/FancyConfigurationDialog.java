@@ -8,6 +8,8 @@ package com.skcraft.launcher;
 
 import com.skcraft.launcher.dialog.AboutDialog;
 import com.skcraft.launcher.dialog.ConsoleFrame;
+import com.skcraft.launcher.dialog.component.BetterComboBox;
+import com.skcraft.launcher.launch.runtime.AddJavaRuntime;
 import com.skcraft.launcher.launch.runtime.JavaRuntime;
 import com.skcraft.launcher.launch.runtime.JavaRuntimeFinder;
 import com.skcraft.launcher.persistence.Persistence;
@@ -25,6 +27,7 @@ import java.awt.event.MouseEvent;
 import java.io.File;
 import java.lang.management.ManagementFactory;
 import java.text.DecimalFormat;
+import java.util.Arrays;
 import com.sun.management.OperatingSystemMXBean;
 
 /**
@@ -58,10 +61,7 @@ public class FancyConfigurationDialog extends JDialog {
     private JLabel totalMemoryLabel;
     private JLabel availableMemoryLabel;
     private JTextField jvmArgsField;
-    private JLabel javaVersionLabel;
-    private JLabel javaPathLabel;
-    private JButton chooseJavaButton;
-    private JavaRuntime selectedRuntime;
+    private JComboBox<JavaRuntime> jvmRuntime;
     
     // Minecraft settings
     private JSpinner widthSpinner;
@@ -86,10 +86,10 @@ public class FancyConfigurationDialog extends JDialog {
         
         this.launcher = launcher;
         this.config = launcher.getConfig();
-        this.selectedRuntime = config.getJavaRuntime();
         
         setLayout(new BorderLayout());
-        setSize(900, 600);
+        setSize(1000, 650);
+        setResizable(true);
         setLocationRelativeTo(owner);
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
         
@@ -324,35 +324,71 @@ public class FancyConfigurationDialog extends JDialog {
         panel.add(memorySection, "wrap, growx, gapbottom 20");
         
         // Java Executable section
-        JPanel javaSection = createSection("Java Executable");
-        javaSection.setLayout(new MigLayout("fill, insets 20", "[grow]", "[][][]"));
+        JPanel javaSection = createSection("Java Runtime");
+        javaSection.setLayout(new MigLayout("fill, insets 20", "[grow]", "[][]"));
         
-        javaVersionLabel = new JLabel("Selected: Java 8 Update 202 (x64)");
-        javaVersionLabel.setForeground(TEXT_PRIMARY);
-        javaVersionLabel.setFont(javaVersionLabel.getFont().deriveFont(Font.BOLD, 14f));
-        javaSection.add(javaVersionLabel, "wrap, gapbottom 10");
+        JLabel javaLabel = new JLabel("Java Version");
+        javaLabel.setForeground(TEXT_PRIMARY);
+        javaLabel.setFont(javaLabel.getFont().deriveFont(Font.BOLD));
+        javaSection.add(javaLabel, "wrap, gapbottom 5");
         
-        // Java path display
-        JPanel pathPanel = new JPanel(new MigLayout("fill, insets 5", "[][grow]", "[]"));
-        pathPanel.setBackground(new Color(40, 40, 40));
-        pathPanel.setBorder(BorderFactory.createLineBorder(BORDER_SUBTLE, 1));
+        // Java runtime dropdown
+        jvmRuntime = new BetterComboBox<>();
+        jvmRuntime.setFont(jvmRuntime.getFont().deriveFont(14f));
+        jvmRuntime.setBackground(new Color(40, 40, 40));
+        jvmRuntime.setForeground(TEXT_PRIMARY);
         
-        JLabel javaIcon = new JLabel("☕");
-        javaIcon.setFont(javaIcon.getFont().deriveFont(20f));
+        // Populate with available runtimes
+        JavaRuntime[] javaRuntimes = JavaRuntimeFinder.getAvailableRuntimes().toArray(new JavaRuntime[0]);
+        DefaultComboBoxModel<JavaRuntime> model = new DefaultComboBoxModel<>(javaRuntimes);
         
-        javaPathLabel = new JLabel("/path/to/java");
-        javaPathLabel.setForeground(TEXT_SECONDARY);
-        javaPathLabel.setFont(javaPathLabel.getFont().deriveFont(12f));
+        // Put the runtime from the config in the model if it isn't
+        boolean configRuntimeFound = Arrays.stream(javaRuntimes).anyMatch(r -> r.equals(config.getJavaRuntime()));
+        if (!configRuntimeFound && config.getJavaRuntime() != null) {
+            model.insertElementAt(config.getJavaRuntime(), 0);
+        }
         
-        pathPanel.add(javaIcon);
-        pathPanel.add(javaPathLabel, "growx");
+        jvmRuntime.setModel(model);
+        jvmRuntime.addItem(AddJavaRuntime.ADD_RUNTIME_SENTINEL);
+        jvmRuntime.setSelectedItem(config.getJavaRuntime());
         
-        javaSection.add(pathPanel, "wrap, growx, gapbottom 10");
+        // Add action listener for "Add custom runtime"
+        jvmRuntime.addActionListener(e -> {
+            if (jvmRuntime.getSelectedItem() == AddJavaRuntime.ADD_RUNTIME_SENTINEL) {
+                jvmRuntime.setSelectedItem(null);
+                jvmRuntime.setPopupVisible(false);
+                
+                JFileChooser chooser = new JFileChooser();
+                chooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
+                chooser.setFileFilter(new FileFilter() {
+                    @Override
+                    public boolean accept(File f) {
+                        if (f.isDirectory()) {
+                            return true;
+                        }
+                        String name = f.getName();
+                        return (name.equals("java") || name.equals("java.exe") || name.equals("javaw.exe")) && f.canExecute();
+                    }
+                    
+                    @Override
+                    public String getDescription() {
+                        return "Java runtime executables";
+                    }
+                });
+                chooser.setDialogTitle("Choose a Java executable");
+                
+                int result = chooser.showOpenDialog(this);
+                if (result == JFileChooser.APPROVE_OPTION) {
+                    JavaRuntime runtime = JavaRuntimeFinder.getRuntimeFromPath(chooser.getSelectedFile().getAbsolutePath());
+                    
+                    DefaultComboBoxModel<JavaRuntime> comboModel = (DefaultComboBoxModel<JavaRuntime>) jvmRuntime.getModel();
+                    comboModel.insertElementAt(runtime, 0);
+                    jvmRuntime.setSelectedItem(runtime);
+                }
+            }
+        });
         
-        // Choose file button
-        chooseJavaButton = createStyledButton("Choose File", PRIMARY_BLUE);
-        chooseJavaButton.addActionListener(e -> chooseJavaExecutable());
-        javaSection.add(chooseJavaButton, "align left");
+        javaSection.add(jvmRuntime, "growx");
         
         panel.add(javaSection, "wrap, growx, gapbottom 20");
         
@@ -407,6 +443,10 @@ public class FancyConfigurationDialog extends JDialog {
             public void paintTrack(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                
+                // Clear the track area first
+                g2.setColor(slider.getParent().getBackground());
+                g2.fillRect(trackRect.x, trackRect.y, trackRect.width, trackRect.height);
                 
                 int trackHeight = 6;
                 int trackTop = (trackRect.height - trackHeight) / 2;
@@ -507,45 +547,6 @@ public class FancyConfigurationDialog extends JDialog {
         return button;
     }
     
-    private void chooseJavaExecutable() {
-        JFileChooser chooser = new JFileChooser();
-        chooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
-        chooser.setFileFilter(new FileFilter() {
-            @Override
-            public boolean accept(File f) {
-                if (f.isDirectory()) {
-                    return true;
-                }
-                String name = f.getName();
-                return (name.equals("java") || name.equals("java.exe") || name.equals("javaw.exe")) && f.canExecute();
-            }
-            
-            @Override
-            public String getDescription() {
-                return "Java runtime executables";
-            }
-        });
-        chooser.setDialogTitle("Choose a Java executable");
-        
-        int result = chooser.showOpenDialog(this);
-        if (result == JFileChooser.APPROVE_OPTION) {
-            selectedRuntime = JavaRuntimeFinder.getRuntimeFromPath(chooser.getSelectedFile().getAbsolutePath());
-            updateJavaInfo();
-        }
-    }
-    
-    private void updateJavaInfo() {
-        if (selectedRuntime != null) {
-            String version = selectedRuntime.getVersion() != null ? selectedRuntime.getVersion() : "unknown";
-            String arch = selectedRuntime.is64Bit() ? "x64" : "x86";
-            javaVersionLabel.setText("Selected: Java " + version + " (" + arch + ")");
-            javaPathLabel.setText(selectedRuntime.getDir().getAbsolutePath());
-        } else {
-            javaVersionLabel.setText("Selected: System Default");
-            javaPathLabel.setText("No custom Java selected");
-        }
-    }
-    
     private JPanel createAccountPanel() {
         return createPlaceholderPanel("Account", "Account settings will be managed through the main launcher interface.");
     }
@@ -604,7 +605,33 @@ public class FancyConfigurationDialog extends JDialog {
     }
     
     private JPanel createLauncherPanel() {
-        return createPlaceholderPanel("Launcher", "Additional launcher settings will be added here.");
+        JPanel panel = new JPanel(new MigLayout("fill, insets 40", "[grow]", "[][]"));
+        panel.setBackground(PANEL_BG);
+        
+        // Title
+        JLabel title = new JLabel("Launcher Settings");
+        title.setFont(title.getFont().deriveFont(Font.BOLD, 24f));
+        title.setForeground(TEXT_PRIMARY);
+        panel.add(title, "wrap, gapbottom 20");
+        
+        // Launcher folder section
+        JPanel folderSection = createSection("Launcher Files");
+        folderSection.setLayout(new MigLayout("fill, insets 20", "[grow]", "[][]"));
+        
+        JLabel folderLabel = new JLabel("Open the launcher directory to view logs, configs, and instances.");
+        folderLabel.setForeground(TEXT_SECONDARY);
+        folderLabel.setFont(folderLabel.getFont().deriveFont(12f));
+        folderSection.add(folderLabel, "wrap, gapbottom 10");
+        
+        JButton openFolderButton = createStyledButton("Open Folder", PRIMARY_BLUE);
+        openFolderButton.addActionListener(e -> {
+            SwingHelper.browseDir(launcher.getBaseDir(), this);
+        });
+        folderSection.add(openFolderButton, "align left");
+        
+        panel.add(folderSection, "wrap, growx");
+        
+        return panel;
     }
     
     private JPanel createAboutPanel() {
@@ -681,9 +708,6 @@ public class FancyConfigurationDialog extends JDialog {
             jvmArgsField.setText(config.getJvmArgs());
         }
         
-        // Load Java runtime
-        updateJavaInfo();
-        
         // Load Minecraft settings
         widthSpinner.setValue(config.getWindowWidth());
         heightSpinner.setValue(config.getWindowHeight());
@@ -698,7 +722,7 @@ public class FancyConfigurationDialog extends JDialog {
         config.setJvmArgs(jvmArgsField.getText());
         
         // Save Java runtime
-        config.setJavaRuntime(selectedRuntime);
+        config.setJavaRuntime((JavaRuntime) jvmRuntime.getSelectedItem());
         
         // Save Minecraft settings
         config.setWindowWidth((Integer) widthSpinner.getValue());
