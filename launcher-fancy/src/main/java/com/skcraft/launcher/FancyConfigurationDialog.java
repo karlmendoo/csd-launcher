@@ -17,17 +17,15 @@ import lombok.NonNull;
 import net.miginfocom.swing.MigLayout;
 
 import javax.swing.*;
-import javax.swing.event.ChangeEvent;
-import javax.swing.event.ChangeListener;
 import javax.swing.filechooser.FileFilter;
 import javax.swing.plaf.basic.BasicSliderUI;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.File;
+import java.lang.management.ManagementFactory;
 import java.text.DecimalFormat;
-import java.util.Dictionary;
-import java.util.Hashtable;
+import com.sun.management.OperatingSystemMXBean;
 
 /**
  * Modern full-screen settings dialog matching Helios Launcher UI style.
@@ -79,6 +77,7 @@ public class FancyConfigurationDialog extends JDialog {
     private static final Color TEXT_SECONDARY = new Color(176, 176, 176);
     private static final Color BORDER_SUBTLE = new Color(255, 255, 255, (int)(0.1 * 255));
     private static final Color PANEL_BG = new Color(30, 30, 30);
+    private static final double AVAILABLE_MEMORY_RATIO = 0.75;
     
     private String currentPanel = "java";
 
@@ -228,14 +227,27 @@ public class FancyConfigurationDialog extends JDialog {
         memorySection.setLayout(new MigLayout("fill, insets 20", "[grow]", "[][][][]"));
         
         // Get system memory
-        long totalMemoryBytes = Runtime.getRuntime().maxMemory();
+        long totalMemoryBytes;
+        long availableMemoryBytes;
+        try {
+            OperatingSystemMXBean osBean = (OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean();
+            totalMemoryBytes = osBean.getTotalPhysicalMemorySize();
+            availableMemoryBytes = osBean.getFreePhysicalMemorySize();
+        } catch (Exception e) {
+            // Fallback to Runtime if MXBean is not available
+            totalMemoryBytes = Runtime.getRuntime().maxMemory();
+            availableMemoryBytes = (long)(totalMemoryBytes * AVAILABLE_MEMORY_RATIO);
+        }
+        
         long totalMemoryMB = totalMemoryBytes / (1024 * 1024);
         double totalMemoryGB = totalMemoryMB / 1024.0;
+        long availableMemoryMB = availableMemoryBytes / (1024 * 1024);
+        double availableMemoryGB = availableMemoryMB / 1024.0;
         
         // Memory info labels
         totalMemoryLabel = new JLabel(String.format("Total: %.1fG", totalMemoryGB));
         totalMemoryLabel.setForeground(TEXT_SECONDARY);
-        availableMemoryLabel = new JLabel(String.format("Available: %.1fG", totalMemoryGB * 0.75)); // Approximate
+        availableMemoryLabel = new JLabel(String.format("Available: %.1fG", availableMemoryGB));
         availableMemoryLabel.setForeground(TEXT_SECONDARY);
         
         JPanel memoryInfoPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
@@ -501,7 +513,11 @@ public class FancyConfigurationDialog extends JDialog {
         chooser.setFileFilter(new FileFilter() {
             @Override
             public boolean accept(File f) {
-                return f.isDirectory() || (f.getName().startsWith("java") && f.canExecute());
+                if (f.isDirectory()) {
+                    return true;
+                }
+                String name = f.getName();
+                return (name.equals("java") || name.equals("java.exe") || name.equals("javaw.exe")) && f.canExecute();
             }
             
             @Override
