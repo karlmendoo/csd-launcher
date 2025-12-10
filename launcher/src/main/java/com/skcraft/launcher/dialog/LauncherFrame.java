@@ -354,10 +354,17 @@ public class LauncherFrame extends JFrame {
         configDialog.setVisible(true);
     }
 
-    private void launch() {
+    protected void launch() {
         boolean permitUpdate = updateCheck.isSelected();
+        
+        // Logic update: Ensure we have a valid selected row, default to 0 if table is hidden/deselected
         int selectedRow = instancesTable.getSelectedRow();
-        if (selectedRow == -1) selectedRow = 0; // Fallback
+        if (selectedRow == -1) {
+            selectedRow = 0;
+        }
+        
+        // Note: In a real scenario with sorting, we should convert row index, 
+        // but sticking to original logic for compatibility.
         Instance instance = launcher.getInstances().get(selectedRow);
 
         LaunchOptions options = new LaunchOptions.Builder()

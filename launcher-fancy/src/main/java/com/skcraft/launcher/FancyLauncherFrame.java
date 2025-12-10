@@ -6,11 +6,10 @@
 
 package com.skcraft.launcher;
 
-import com.skcraft.launcher.Instance;
-import com.skcraft.launcher.Launcher;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.skcraft.launcher.auth.AccountList;
 import com.skcraft.launcher.auth.SavedSession;
-import com.skcraft.launcher.auth.Session;
 import com.skcraft.launcher.dialog.AccountSelectDialog;
 import com.skcraft.launcher.dialog.LauncherFrame;
 import com.skcraft.launcher.dialog.component.BetterComboBox;
@@ -26,6 +25,13 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.geom.Ellipse2D;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 
 public class FancyLauncherFrame extends LauncherFrame {
 
@@ -33,12 +39,13 @@ public class FancyLauncherFrame extends LauncherFrame {
     private final JComboBox<Instance> instanceSelector = new BetterComboBox<>();
     private final JLabel nameLabel = new JLabel();
     private final JLabel headLabel = new JLabel();
+    private final JLabel serverStatusLabel = new JLabel("Pinging...");
     private JPanel container;
 
     // Icons
     private final Icon instanceIcon = SwingHelper.createIcon(Launcher.class, "instance_icon.png", 16, 16);
     private final Icon downloadIcon = SwingHelper.createIcon(Launcher.class, "download_icon.png", 16, 16);
-
+    
     // Custom colors
     private static final Color GLASS_COLOR = new Color(10, 10, 10, 140);
     private static final Color HOVER_COLOR = new Color(255, 255, 255, 20);
@@ -61,19 +68,28 @@ public class FancyLauncherFrame extends LauncherFrame {
         container.setLayout(new MigLayout("fill, insets 0, gap 0", "[grow]", "[60!][grow][60!]"));
 
         // 1. Top Bar (Logo + Account Manager)
-        JPanel topBar = new GlassPanel(new MigLayout("fill, insets 10 20 10 20", "[][grow][right]", "[]"));
+        // Modified columns to include server status: [Logo][Status][Spacer][Account]
+        JPanel topBar = new GlassPanel(new MigLayout("fill, insets 10 20 10 20", "[][][grow][right]", "[]"));
         // Logo
         JLabel logoLabel = new JLabel("Changelogs");
         logoLabel.setFont(logoLabel.getFont().deriveFont(Font.BOLD, 18f));
         logoLabel.setForeground(Color.WHITE);
+
+        // Server Status
+        serverStatusLabel.setFont(serverStatusLabel.getFont().deriveFont(Font.BOLD, 12f));
+        serverStatusLabel.setForeground(new Color(200, 200, 200));
         
         // Account Manager
         JPanel accountPanel = createAccountPanel();
         updateAccountInfo(); // Populate initial data
-
+        
         topBar.add(logoLabel);
+        topBar.add(serverStatusLabel, "gapleft 20");
         topBar.add(new JLabel("")); // Spacer
         topBar.add(accountPanel);
+
+        // Start async ping
+        pingServer();
 
         // 2. Center (Webpage) - Now full width
         WebpagePanel webView = createNewsPanel();
@@ -91,6 +107,19 @@ public class FancyLauncherFrame extends LauncherFrame {
         optionsButton.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
         optionsButton.setForeground(new Color(200, 200, 200));
         optionsButton.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+
+        // Remove default action listeners (which opened config directly)
+        for (java.awt.event.ActionListener al : optionsButton.getActionListeners()) {
+            optionsButton.removeActionListener(al);
+        }
+
+        // Add menu popup behavior
+        optionsButton.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                showSettingsMenu(e.getComponent(), e.getX(), e.getY());
+            }
+        });
 
         // Configure Instance Selector
         DefaultComboBoxModel<Instance> model = new DefaultComboBoxModel<>();
@@ -126,6 +155,54 @@ public class FancyLauncherFrame extends LauncherFrame {
         updateCheck.setForeground(Color.WHITE);
     }
 
+    private void showSettingsMenu(Component invoker, int x, int y) {
+        JPopupMenu popup = new JPopupMenu();
+        
+        // Launcher Settings
+        JMenuItem settingsItem = new JMenuItem("Launcher Settings...");
+        settingsItem.addActionListener(e -> {
+            // Call the protected method from LauncherFrame
+            com.skcraft.launcher.dialog.ConfigurationDialog configDialog = 
+                new com.skcraft.launcher.dialog.ConfigurationDialog(this, launcher);
+            configDialog.setVisible(true);
+        });
+        popup.add(settingsItem);
+
+        popup.addSeparator();
+
+        Instance instance = (Instance) instanceSelector.getSelectedItem();
+        if (instance != null) {
+            // Open Folder
+            JMenuItem openFolderItem = new JMenuItem("Open Modpack Folder");
+            openFolderItem.addActionListener(e -> SwingHelper.browseDir(instance.getContentDir(), this));
+            popup.add(openFolderItem);
+
+            // Repair / Reinstall
+            JMenuItem repairItem = new JMenuItem("Repair / Reinstall...");
+            repairItem.addActionListener(e -> {
+                int result = JOptionPane.showConfirmDialog(this,
+                        "This will check all files for integrity and redownload any missing or corrupt mods.\n" +
+                        "Your saves and options will be kept.\n\n" +
+                        "Continue?",
+                        "Repair Modpack", JOptionPane.YES_NO_OPTION);
+                
+                if (result == JOptionPane.YES_OPTION) {
+                    // Force update flag
+                    instance.setUpdatePending(true);
+                    com.skcraft.launcher.persistence.Persistence.commitAndForget(instance);
+                    // Update UI button state
+                    updateLaunchButton();
+                    // Trigger update process immediately
+                    launch();
+                }
+            });
+            popup.add(repairItem);
+        }
+
+        popup.show(invoker, x, y - popup.getPreferredSize().height);
+    }
+
+
     private void updateInstanceList() {
         SwingUtilities.invokeLater(() -> {
             DefaultComboBoxModel<Instance> model = (DefaultComboBoxModel<Instance>) instanceSelector.getModel();
@@ -145,6 +222,86 @@ public class FancyLauncherFrame extends LauncherFrame {
                 }
             }
         });
+    }
+
+    private void pingServer() {
+        launcher.getExecutor().submit(() -> {
+            String host = "35.221.228.109";
+            int port = 6969;
+
+            try (Socket socket = new Socket()) {
+                socket.connect(new InetSocketAddress(host, port), 4000);
+
+                DataInputStream in = new DataInputStream(socket.getInputStream());
+                DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+
+                // Handshake
+                ByteArrayOutputStream b = new ByteArrayOutputStream();
+                DataOutputStream handshake = new DataOutputStream(b);
+                handshake.writeByte(0x00); // Packet ID
+                writeVarInt(handshake, 47); // Protocol Version (1.8 is 47, generally accepted for ping)
+                writeVarInt(handshake, host.length());
+                handshake.write(host.getBytes(StandardCharsets.UTF_8));
+                handshake.writeShort(port);
+                writeVarInt(handshake, 1); // State (1 for Status)
+
+                writeVarInt(out, b.size()); // Length
+                out.write(b.toByteArray()); // Data
+
+                // Status Request
+                out.writeByte(0x01); // Length
+                out.writeByte(0x00); // Packet ID
+
+                // Read Response
+                readVarInt(in); // Packet Length
+                readVarInt(in); // Packet ID
+                int jsonLength = readVarInt(in);
+
+                byte[] data = new byte[jsonLength];
+                in.readFully(data);
+                String json = new String(data, StandardCharsets.UTF_8);
+
+                ObjectMapper mapper = new ObjectMapper();
+                JsonNode root = mapper.readTree(json);
+                JsonNode players = root.get("players");
+                int online = players.get("online").asInt();
+                int max = players.get("max").asInt();
+
+                SwingUtilities.invokeLater(() -> {
+                    serverStatusLabel.setText("\u25CF " + online + "/" + max + " Online");
+                    serverStatusLabel.setForeground(new Color(92, 184, 92)); // Success Green
+                });
+
+            } catch (Exception e) {
+                SwingUtilities.invokeLater(() -> {
+                    serverStatusLabel.setText("\u25CF Offline");
+                    serverStatusLabel.setForeground(new Color(217, 83, 79)); // Error Red
+                });
+            }
+        });
+    }
+
+    private void writeVarInt(DataOutputStream out, int paramInt) throws IOException {
+        while (true) {
+            if ((paramInt & 0xFFFFFF80) == 0) {
+                out.writeByte(paramInt);
+                return;
+            }
+            out.writeByte(paramInt & 0x7F | 0x80);
+            paramInt >>>= 7;
+        }
+    }
+
+    private int readVarInt(DataInputStream in) throws IOException {
+        int i = 0;
+        int j = 0;
+        while (true) {
+            int k = in.readByte();
+            i |= (k & 0x7F) << j++ * 7;
+            if (j > 5) throw new RuntimeException("VarInt too big");
+            if ((k & 0x80) != 128) break;
+        }
+        return i;
     }
 
     private JPanel createAccountPanel() {

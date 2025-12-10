@@ -22,6 +22,7 @@ import java.util.logging.Level;
 public class FancyLauncher {
 
     public static void main(final String[] args) {
+        // Enable anti-aliasing globally before any Swing classes load
         System.setProperty("awt.useSystemAAFontSettings", "on");
         System.setProperty("swing.aatext", "true");
         System.setProperty("sun.awt.noerasebackground", "true");
@@ -32,6 +33,31 @@ public class FancyLauncher {
         SwingUtilities.invokeLater(new Runnable() {
             @Override
             public void run() {
+                /*
+                 * Native Splash Screen (Preferred)
+                 */
+                SplashScreen splash = SplashScreen.getSplashScreen();
+                
+                // Fallback Manual Splash (If native fails or config is wrong)
+                JWindow fallbackSplash = null;
+                if (splash == null) {
+                    try {
+                        // Load image from the path you specified: com/skcraft/launcher/splash.png
+                        java.net.URL imgUrl = FancyLauncher.class.getResource("/com/skcraft/launcher/splash.png");
+                        if (imgUrl != null) {
+                            ImageIcon img = new ImageIcon(imgUrl);
+                            fallbackSplash = new JWindow();
+                            fallbackSplash.getContentPane().add(new JLabel(img));
+                            fallbackSplash.setSize(img.getIconWidth(), img.getIconHeight());
+                            fallbackSplash.setLocationRelativeTo(null);
+                            fallbackSplash.setBackground(new Color(0, 0, 0, 0)); // Transparent
+                            fallbackSplash.setVisible(true);
+                        } else {
+                            System.out.println("Splash image not found at /com/skcraft/launcher/splash.png");
+                        }
+                    } catch (Exception ignored) { }
+                }
+
                 try {
                     Thread.currentThread().setContextClassLoader(FancyLauncher.class.getClassLoader());
                     UIManager.getLookAndFeelDefaults().put("ClassLoader", FancyLauncher.class.getClassLoader());
@@ -46,14 +72,22 @@ public class FancyLauncher {
 
                     setModernFont();
 
-                    if (!SwingHelper.setLookAndFeel("com.skcraft.launcher.skin.LauncherLookAndFeel")) {
-                        UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-                    }
-
                     Launcher launcher = Launcher.createFromArguments(args);
                     launcher.setMainWindowSupplier(new CustomWindowSupplier(launcher));
                     launcher.showLauncherWindow();
+
+                    // Close Native Splash
+                    if (splash != null && splash.isVisible()) {
+                        splash.close();
+                    }
+                    // Close Fallback Splash
+                    if (fallbackSplash != null) {
+                        fallbackSplash.dispose();
+                    }
                 } catch (Throwable t) {
+                    if (splash != null && splash.isVisible()) splash.close();
+                    if (fallbackSplash != null) fallbackSplash.dispose();
+                    
                     log.log(Level.WARNING, "Load failure", t);
                     SwingHelper.showErrorDialog(null, "Uh oh! The updater couldn't be opened because a " +
                             "problem was encountered.", "Launcher error", t);

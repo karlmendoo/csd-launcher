@@ -12,187 +12,104 @@ import com.skcraft.concurrency.ProgressObservable;
 import lombok.Data;
 import lombok.Getter;
 import lombok.extern.java.Log;
+import okhttp3.*;
 
 import javax.xml.bind.JAXBContext;
 import javax.xml.bind.JAXBException;
 import javax.xml.bind.Unmarshaller;
 import java.io.*;
-import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLEncoder;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 import static com.skcraft.launcher.LauncherUtils.checkInterrupted;
 import static org.apache.commons.io.IOUtils.closeQuietly;
 
-/**
- * A simple fluent interface for performing HTTP requests that uses
- * {@link java.net.HttpURLConnection} or {@link javax.net.ssl.HttpsURLConnection}.
- */
 @Log
 public class HttpRequest implements Closeable, ProgressObservable {
 
-    private static final int READ_TIMEOUT = 1000 * 60 * 10;
     private static final int READ_BUFFER_SIZE = 1024 * 8;
+    
+    // Singleton OkHttpClient to enable Connection Pooling
+    private static final OkHttpClient CLIENT = new OkHttpClient.Builder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .followRedirects(true)
+            .followSslRedirects(true)
+            .build();
 
     private final ObjectMapper mapper = new ObjectMapper();
-    private final Map<String, String> headers = new HashMap<String, String>();
-    private String method;
+    private final Request.Builder builder = new Request.Builder();
+    private final String method;
+    
     @Getter
     private final URL url;
-    private String contentType;
-    private byte[] body;
-    private HttpURLConnection conn;
+    
+    private Response response;
     private InputStream inputStream;
-    private int redirectCount;
-
-    private PartialDownloadInfo resumeInfo = null;
+    private RequestBody requestBody;
     private long contentLength = -1;
     private long readBytes = 0;
+    
+    private PartialDownloadInfo resumeInfo;
 
-    /**
-     * Create a new HTTP request.
-     *
-     * @param method the method
-     * @param url    the URL
-     */
     private HttpRequest(String method, URL url) {
         this.method = method;
         this.url = url;
+        this.builder.url(url);
     }
 
-    /**
-     * Set the content body to a JSON object with the content type of "application/json".
-     *
-     * @param object the object to serialize as JSON
-     * @return this object
-     * @throws java.io.IOException if the object can't be mapped
-     */
     public HttpRequest bodyJson(Object object) throws IOException {
-        contentType = "application/json";
-        body = mapper.writeValueAsBytes(object);
+        String json = mapper.writeValueAsString(object);
+        this.requestBody = RequestBody.create(json, MediaType.parse("application/json"));
         return this;
     }
 
-    /**
-     * Submit form data.
-     *
-     * @param form the form
-     * @return this object
-     */
     public HttpRequest bodyForm(Form form) {
-        contentType = "application/x-www-form-urlencoded";
-        body = form.toString().getBytes();
+        this.requestBody = RequestBody.create(form.toString(), MediaType.parse("application/x-www-form-urlencoded"));
         return this;
     }
 
-    /**
-     * Add a header.
-     *
-     * @param key   the header key
-     * @param value the header value
-     * @return this object
-     */
     public HttpRequest header(String key, String value) {
-        headers.put(key, value);
+        builder.header(key, value);
         return this;
     }
 
-    /**
-     * Execute the request.
-     * <p/>
-     * After execution, {@link #close()} should be called.
-     *
-     * @return this object
-     * @throws java.io.IOException on I/O error
-     */
     public HttpRequest execute() throws IOException {
-        boolean successful = false;
+        if (response != null) {
+            throw new IllegalArgumentException("Connection already executed");
+        }
 
-        try {
-            if (conn != null) {
-                throw new IllegalArgumentException("Connection already executed");
-            }
+        // Apply method and body
+        // If POST but no body set, provide empty body to satisfy OkHttp
+        if (requestBody == null && "POST".equalsIgnoreCase(method)) {
+            requestBody = RequestBody.create(new byte[0], null);
+        }
+        
+        builder.method(method, requestBody);
 
-            conn = this.runRequest(url);
+        builder.header("User-Agent", "Mozilla/5.0 (Java) SKMCLauncher");
+        
+        if (resumeInfo != null) {
+            builder.header("Range", "bytes=" + resumeInfo.currentLength + "-");
+        }
 
-            inputStream = isSuccessCode() ? conn.getInputStream() : conn.getErrorStream();
-
-            successful = true;
-        } finally {
-            if (!successful) {
-                close();
-            }
+        response = CLIENT.newCall(builder.build()).execute();
+        
+        if (response.body() != null) {
+            contentLength = response.body().contentLength();
+            inputStream = response.body().byteStream();
+        } else {
+            inputStream = new ByteArrayInputStream(new byte[0]);
         }
 
         return this;
     }
 
-    private HttpURLConnection runRequest(URL url) throws IOException {
-        if (redirectCount > 20) {
-            throw new IOException("Too many redirects!");
-        }
-
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Java) SKMCLauncher");
-        conn.setInstanceFollowRedirects(false);
-
-        if (body != null) {
-            conn.setRequestProperty("Content-Type", contentType);
-            conn.setRequestProperty("Content-Length", Integer.toString(body.length));
-            conn.setDoInput(true);
-        }
-
-        if (resumeInfo != null) {
-            conn.setRequestProperty("Range", String.format("bytes=%d-", resumeInfo.currentLength));
-        }
-
-        for (Map.Entry<String, String> entry : headers.entrySet()) {
-            conn.setRequestProperty(entry.getKey(), entry.getValue());
-        }
-
-        conn.setRequestMethod(method);
-        conn.setUseCaches(false);
-        conn.setDoOutput(true);
-        conn.setReadTimeout(READ_TIMEOUT);
-
-        conn.connect();
-
-        if (body != null) {
-            DataOutputStream out = new DataOutputStream(conn.getOutputStream());
-            out.write(body);
-            out.flush();
-            out.close();
-        }
-
-        switch (conn.getResponseCode()) {
-            case HttpURLConnection.HTTP_SEE_OTHER:
-                method = "GET";
-                body = null;
-            case HttpURLConnection.HTTP_MOVED_PERM:
-            case HttpURLConnection.HTTP_MOVED_TEMP:
-            case HttpURLConnection.HTTP_ACCEPTED:
-            case 307:
-            case 308:
-                String location = conn.getHeaderField("Location");
-                redirectCount++;
-
-                return runRequest(new URL(this.url, location));
-            default:
-                break;
-        }
-
-        return conn;
-    }
-
-    /**
-     * Require that the response code is one of the given response codes.
-     *
-     * @param codes a list of codes
-     * @return this object
-     * @throws java.io.IOException if there is an I/O error or the response code is not expected
-     */
     public HttpRequest expectResponseCode(int... codes) throws IOException {
         int responseCode = getResponseCode();
 
@@ -203,7 +120,6 @@ public class HttpRequest implements Closeable, ProgressObservable {
         }
 
         if (resumeInfo != null && responseCode == 206) {
-            // Allow 206 Partial Content for resumed requests
             return this;
         }
 
@@ -211,16 +127,6 @@ public class HttpRequest implements Closeable, ProgressObservable {
         throw new IOException("Did not get expected response code, got " + responseCode + " for " + url);
     }
 
-    /**
-     * Continue if the response code matches, otherwise call the provided function
-     * to generate an exception.
-     *
-     * @param code HTTP status code to continue on.
-     * @param onError Function invoked when the code does not match, should return an error that will be thrown.
-     * @return this object if successful
-     * @throws Exception either an {@link IOException} on I/O error or a user-defined {@link Exception} subclass
-     *         if the code does not match.
-     */
     public <E extends Exception> HttpRequest expectResponseCodeOr(int code, HttpFunction<HttpRequest, E> onError)
             throws E, IOException, InterruptedException {
         int responseCode = getResponseCode();
@@ -232,19 +138,14 @@ public class HttpRequest implements Closeable, ProgressObservable {
         throw exc;
     }
 
-    /**
-     * Continue if the content type matches, otherwise throw an exception
-     *
-     * @param expectedTypes Expected content-type(s)
-     * @return this object
-     * @throws IOException Unexpected content-type or other error
-     */
     public HttpRequest expectContentType(String... expectedTypes) throws IOException {
-        if (conn == null) throw new IllegalArgumentException("No connection has been made!");
+        if (response == null) throw new IllegalArgumentException("No connection has been made!");
 
-        String contentType = conn.getHeaderField("Content-Type");
+        String contentType = response.header("Content-Type");
+        if (contentType == null) contentType = "";
+        
         for (String expectedType : expectedTypes) {
-            if (expectedType.equals(contentType)) {
+            if (contentType.startsWith(expectedType)) {
                 return this;
             }
         }
@@ -254,87 +155,38 @@ public class HttpRequest implements Closeable, ProgressObservable {
                 String.join(" | ", expectedTypes), contentType));
     }
 
-    /**
-     * Get the response code.
-     *
-     * @return the response code
-     * @throws java.io.IOException on I/O error
-     */
-    public int getResponseCode() throws IOException {
-        if (conn == null) {
-            throw new IllegalArgumentException("No connection has been made");
-        }
-
-        return conn.getResponseCode();
+    public int getResponseCode() {
+        if (response == null) throw new IllegalArgumentException("No connection has been made");
+        return response.code();
     }
 
-    /**
-     * Check if the response code indicates a successful request.
-     * @return True if response code is 2xx, false otherwise.
-     * @throws IOException on I/O error getting the response code.
-     */
-    public boolean isSuccessCode() throws IOException {
-        int code = getResponseCode();
-        return code >= 200 && code < 300;
+    public boolean isSuccessCode() {
+        return response != null && response.isSuccessful();
     }
 
-    /**
-     * Get the input stream.
-     *
-     * @return the input stream
-     */
-    public InputStream getInputStream() {
-        return inputStream;
-    }
-
-    /**
-     * Check if a connection was ever made
-     *
-     * @return True if a connection is available, false otherwise
-     */
     public boolean isConnected() {
-        return conn != null;
+        return response != null;
     }
 
-    /**
-     * Buffer the returned response.
-     *
-     * @return the buffered response
-     * @throws java.io.IOException  on I/O error
-     * @throws InterruptedException on interruption
-     */
     public BufferedResponse returnContent() throws IOException, InterruptedException {
         if (inputStream == null) {
             throw new IllegalArgumentException("No input stream available");
         }
 
         try {
-            ByteArrayOutputStream bos = new ByteArrayOutputStream();
-            int b = 0;
-            while ((b = inputStream.read()) != -1) {
-                checkInterrupted();
-                bos.write(b);
-            }
-            return new BufferedResponse(bos.toByteArray());
+            return new BufferedResponse(response.body().bytes());
         } finally {
             close();
         }
     }
 
-    /**
-     * Save the result to a file.
-     *
-     * @param file the file
-     * @return this object
-     * @throws java.io.IOException  on I/O error
-     * @throws InterruptedException on interruption
-     */
     public HttpRequest saveContent(File file) throws IOException, InterruptedException {
         FileOutputStream fos = null;
         BufferedOutputStream bos = null;
         boolean shouldAppend = resumeInfo != null && getResponseCode() == 206;
 
         try {
+            file.getParentFile().mkdirs();
             fos = new FileOutputStream(file, shouldAppend);
             bos = new BufferedOutputStream(fos);
 
@@ -347,40 +199,17 @@ public class HttpRequest implements Closeable, ProgressObservable {
         return this;
     }
 
-    /**
-     * Save the result to an output stream.
-     *
-     * @param out the output stream
-     * @return this object
-     * @throws java.io.IOException  on I/O error
-     * @throws InterruptedException on interruption
-     */
     public HttpRequest saveContent(OutputStream out) throws IOException, InterruptedException {
-        BufferedInputStream bis;
-
         try {
-            String field = conn.getHeaderField("Content-Length");
-            if (field != null) {
-                long len = Long.parseLong(field);
-                if (len >= 0) { // Let's just not deal with really big numbers
-                    contentLength = len;
-                }
-            }
-        } catch (NumberFormatException e) {
-        }
-
-        try {
-            bis = new BufferedInputStream(inputStream);
-
             byte[] data = new byte[READ_BUFFER_SIZE];
             int len = 0;
-            while ((len = bis.read(data, 0, READ_BUFFER_SIZE)) >= 0) {
+            while ((len = inputStream.read(data, 0, READ_BUFFER_SIZE)) >= 0) {
                 out.write(data, 0, len);
                 readBytes += len;
                 checkInterrupted();
             }
 
-            if (contentLength >= 0 && contentLength != readBytes) {
+            if (contentLength >= 0 && !isResumedRequest() && contentLength != readBytes) {
                 throw new IOException(String.format("Connection closed with %d bytes transferred, expected %d",
                         readBytes, contentLength));
             }
@@ -392,11 +221,9 @@ public class HttpRequest implements Closeable, ProgressObservable {
     }
 
     public Optional<PartialDownloadInfo> canRetryPartial() {
-        if (conn == null) {
-            return Optional.empty();
-        }
+        if (response == null) return Optional.empty();
 
-        if ("bytes".equals(conn.getHeaderField("Accept-Ranges"))) {
+        if ("bytes".equals(response.header("Accept-Ranges"))) {
             return Optional.of(new PartialDownloadInfo(contentLength, readBytes));
         }
 
@@ -405,7 +232,6 @@ public class HttpRequest implements Closeable, ProgressObservable {
 
     public HttpRequest setResumeInfo(PartialDownloadInfo info) {
         this.resumeInfo = info;
-
         return this;
     }
 
@@ -416,7 +242,7 @@ public class HttpRequest implements Closeable, ProgressObservable {
     @Override
     public double getProgress() {
         if (contentLength >= 0) {
-            return readBytes / (double) contentLength;
+            return (double) readBytes / contentLength;
         } else {
             return -1;
         }
@@ -429,48 +255,22 @@ public class HttpRequest implements Closeable, ProgressObservable {
 
     @Override
     public void close() throws IOException {
-        if (conn != null) conn.disconnect();
+        if (response != null) {
+            response.close();
+        }
+        if (inputStream != null) {
+            inputStream.close();
+        }
     }
 
-    /**
-     * Perform a GET request.
-     *
-     * @param url the URL
-     * @return a new request object
-     */
     public static HttpRequest get(URL url) {
-        return request("GET", url);
+        return new HttpRequest("GET", url);
     }
 
-    /**
-     * Perform a POST request.
-     *
-     * @param url the URL
-     * @return a new request object
-     */
     public static HttpRequest post(URL url) {
-        return request("POST", url);
+        return new HttpRequest("POST", url);
     }
 
-    /**
-     * Perform a request.
-     *
-     * @param method the method
-     * @param url    the URL
-     * @return a new request object
-     */
-    public static HttpRequest request(String method, URL url) {
-        return new HttpRequest(method, url);
-    }
-
-    /**
-     * Create a new {@link java.net.URL} and throw a {@link RuntimeException} if the URL
-     * is not valid.
-     *
-     * @param url the url
-     * @return a URL object
-     * @throws RuntimeException if the URL is invalid
-     */
     public static URL url(String url) {
         try {
             return new URL(url);
@@ -479,22 +279,12 @@ public class HttpRequest implements Closeable, ProgressObservable {
         }
     }
 
-    /**
-     * Used with {@link #bodyForm(Form)}.
-     */
+    // Retained for compatibility with existing code
     public final static class Form {
         public final List<String> elements = new ArrayList<String>();
 
-        private Form() {
-        }
+        private Form() { }
 
-        /**
-         * Add a key/value to the form.
-         *
-         * @param key   the key
-         * @param value the value
-         * @return this object
-         */
         public Form add(String key, String value) {
             try {
                 elements.add(URLEncoder.encode(key, "UTF-8") +
@@ -520,19 +310,11 @@ public class HttpRequest implements Closeable, ProgressObservable {
             return builder.toString();
         }
 
-        /**
-         * Create a new form.
-         *
-         * @return a new form
-         */
         public static Form form() {
             return new Form();
         }
     }
 
-    /**
-     * Used to buffer the response in memory.
-     */
     public class BufferedResponse {
         private final byte[] data;
 
@@ -540,57 +322,22 @@ public class HttpRequest implements Closeable, ProgressObservable {
             this.data = data;
         }
 
-        /**
-         * Return the result as bytes.
-         *
-         * @return the data
-         */
         public byte[] asBytes() {
             return data;
         }
 
-        /**
-         * Return the result as a string.
-         *
-         * @param encoding the encoding
-         * @return the string
-         * @throws java.io.IOException on I/O error
-         */
         public String asString(String encoding) throws IOException {
             return new String(data, encoding);
         }
 
-        /**
-         * Return the result as an instance of the given class that has been
-         * deserialized from a JSON payload.
-         *
-         * @param cls the class
-         * @return the object
-         * @throws java.io.IOException on I/O error
-         */
         public <T> T asJson(Class<T> cls) throws IOException {
             return mapper.readValue(asString("UTF-8"), cls);
         }
 
-        /**
-         * Return the result as an instance of the given type that has been
-         * deserialized from a JSON payload.
-         *
-         * @param type the type reference
-         * @return the object
-         * @throws java.io.IOException on I/O error
-         */
         public <T> T asJson(TypeReference<T> type) throws IOException {
             return mapper.readValue(asString("UTF-8"), type);
         }
 
-        /**
-         * Return the result as an instance of the given class that has been
-         * deserialized from a XML payload.
-         *
-         * @return the object
-         * @throws java.io.IOException on I/O error
-         */
         @SuppressWarnings("unchecked")
         public <T> T asXml(Class<T> cls) throws IOException {
             try {
@@ -602,44 +349,13 @@ public class HttpRequest implements Closeable, ProgressObservable {
             }
         }
 
-        /**
-         * Save the result to a file.
-         *
-         * @param file the file
-         * @return this object
-         * @throws java.io.IOException  on I/O error
-         * @throws InterruptedException on interruption
-         */
         public BufferedResponse saveContent(File file) throws IOException, InterruptedException {
-            FileOutputStream fos = null;
-            BufferedOutputStream bos = null;
-
-            file.getParentFile().mkdirs();
-
-            try {
-                fos = new FileOutputStream(file);
-                bos = new BufferedOutputStream(fos);
-
-                saveContent(bos);
-            } finally {
-                closeQuietly(bos);
-                closeQuietly(fos);
+            if (file.getParentFile() != null) {
+                file.getParentFile().mkdirs();
             }
-
-            return this;
-        }
-
-        /**
-         * Save the result to an output stream.
-         *
-         * @param out the output stream
-         * @return this object
-         * @throws java.io.IOException  on I/O error
-         * @throws InterruptedException on interruption
-         */
-        public BufferedResponse saveContent(OutputStream out) throws IOException, InterruptedException {
-            out.write(data);
-
+            try (FileOutputStream fos = new FileOutputStream(file)) {
+                fos.write(data);
+            }
             return this;
         }
     }
@@ -649,5 +365,4 @@ public class HttpRequest implements Closeable, ProgressObservable {
         private final long expectedLength;
         private final long currentLength;
     }
-
 }

@@ -4,6 +4,13 @@ plugins {
     id 'io.freefair.lombok'
 }
 
+manifest {
+    attributes(
+        'Main-Class': 'com.skcraft.launcher.FancyLauncher',
+        'SplashScreen-Image': 'com/skcraft/launcher/splash.png'
+    )
+}
+
 application {
     mainClassName = "com.skcraft.launcher.FancyLauncher"
 }

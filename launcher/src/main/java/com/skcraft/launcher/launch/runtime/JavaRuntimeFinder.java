@@ -73,6 +73,11 @@ public final class JavaRuntimeFinder {
         return getRuntimeFromPath(new File(path));
     }
 
+    public static Optional<JavaRuntime> findNewestRuntime() {
+        return getAvailableRuntimes().stream()
+                .max(Comparator.comparingInt(JavaRuntime::getMajorVersion));
+    }
+
     public static JavaRuntime getRuntimeFromPath(File target) {
         // Normalize target to root first
         if (target.isFile()) {
