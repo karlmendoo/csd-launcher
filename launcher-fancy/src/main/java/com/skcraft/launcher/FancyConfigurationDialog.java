@@ -49,7 +49,6 @@ public class FancyConfigurationDialog extends JDialog {
     private JButton modsButton;
     private JButton javaButton;
     private JButton launcherButton;
-    private JButton aboutButton;
     private JButton updatesButton;
     private JButton doneButton;
     
@@ -108,13 +107,12 @@ public class FancyConfigurationDialog extends JDialog {
         navigationPanel.setPreferredSize(new Dimension(200, 600));
         navigationPanel.setBorder(BorderFactory.createMatteBorder(0, 0, 0, 1, BORDER_SUBTLE));
         
-        // Add navigation buttons
+        // Add navigation buttons (removed About button)
         accountButton = createNavButton("Account", "account");
         minecraftButton = createNavButton("Minecraft", "minecraft");
         modsButton = createNavButton("Mods", "mods");
         javaButton = createNavButton("Java", "java");
         launcherButton = createNavButton("Launcher", "launcher");
-        aboutButton = createNavButton("About", "about");
         updatesButton = createNavButton("Updates", "updates");
         
         navigationPanel.add(Box.createVerticalStrut(20));
@@ -123,7 +121,6 @@ public class FancyConfigurationDialog extends JDialog {
         navigationPanel.add(modsButton);
         navigationPanel.add(javaButton);
         navigationPanel.add(launcherButton);
-        navigationPanel.add(aboutButton);
         navigationPanel.add(updatesButton);
         navigationPanel.add(Box.createVerticalGlue());
         
@@ -138,13 +135,12 @@ public class FancyConfigurationDialog extends JDialog {
         contentPanel.setLayout(cardLayout);
         contentPanel.setBackground(PANEL_BG);
         
-        // Create panels for each section
+        // Create panels for each section (removed About panel)
         contentPanel.add(createAccountPanel(), "account");
         contentPanel.add(createMinecraftPanel(), "minecraft");
         contentPanel.add(createModsPanel(), "mods");
         contentPanel.add(createJavaPanel(), "java");
         contentPanel.add(createLauncherPanel(), "launcher");
-        contentPanel.add(createAboutPanel(), "about");
         contentPanel.add(createUpdatesPanel(), "updates");
         
         // Show Java panel by default
@@ -630,39 +626,6 @@ public class FancyConfigurationDialog extends JDialog {
         folderSection.add(openFolderButton, "align left");
         
         panel.add(folderSection, "wrap, growx");
-        
-        return panel;
-    }
-    
-    private JPanel createAboutPanel() {
-        JPanel panel = new JPanel(new MigLayout("fill, insets 40", "[grow]", "[][][]"));
-        panel.setBackground(PANEL_BG);
-        
-        // Title
-        JLabel title = new JLabel("About");
-        title.setFont(title.getFont().deriveFont(Font.BOLD, 24f));
-        title.setForeground(TEXT_PRIMARY);
-        panel.add(title, "wrap, gapbottom 20");
-        
-        // About section
-        JPanel aboutSection = createSection("Launcher Information");
-        aboutSection.setLayout(new MigLayout("fill, insets 20", "[grow]", "[][]"));
-        
-        JLabel infoLabel = new JLabel("<html>SKCraft Launcher<br>Fancy Edition</html>");
-        infoLabel.setForeground(TEXT_PRIMARY);
-        infoLabel.setFont(infoLabel.getFont().deriveFont(14f));
-        aboutSection.add(infoLabel, "wrap");
-        
-        JButton aboutDialogButton = createStyledButton("More Info", PRIMARY_BLUE);
-        aboutDialogButton.addActionListener(e -> AboutDialog.showAboutDialog(this));
-        aboutSection.add(aboutDialogButton, "align left");
-        
-        panel.add(aboutSection, "wrap, growx, gapbottom 20");
-        
-        // Console button
-        JButton consoleButton = createStyledButton("Open Console", new Color(60, 60, 60));
-        consoleButton.addActionListener(e -> ConsoleFrame.showMessages());
-        panel.add(consoleButton, "align left");
         
         return panel;
     }

@@ -156,17 +156,23 @@ public class FancyLauncherFrame extends LauncherFrame {
         panel.setOpaque(false);
         
         try {
-            Image logoImage = ImageIO.read(FancyLauncherFrame.class.getResourceAsStream("server_logo.png"));
-            serverLogoComponent = new CircularImageComponent(logoImage, 50, PRIMARY_BLUE, 3);
+            // Try to load redstone logo first, fallback to server_logo.png
+            Image logoImage;
+            try {
+                logoImage = ImageIO.read(FancyLauncherFrame.class.getResourceAsStream("redstone_logo.png"));
+            } catch (Exception e) {
+                logoImage = ImageIO.read(FancyLauncherFrame.class.getResourceAsStream("server_logo.png"));
+            }
+            serverLogoComponent = new CircularImageComponent(logoImage, 50, new Color(139, 0, 0), 3);
             panel.add(serverLogoComponent);
         } catch (Exception e) {
-            // Fallback to simple colored circle
+            // Fallback to simple red circle (redstone color)
             BufferedImage fallback = new BufferedImage(50, 50, BufferedImage.TYPE_INT_ARGB);
             Graphics2D g2 = fallback.createGraphics();
-            g2.setColor(PRIMARY_BLUE);
+            g2.setColor(new Color(200, 0, 0));
             g2.fillOval(0, 0, 50, 50);
             g2.dispose();
-            serverLogoComponent = new CircularImageComponent(fallback, 50, PRIMARY_BLUE, 3);
+            serverLogoComponent = new CircularImageComponent(fallback, 50, new Color(139, 0, 0), 3);
             panel.add(serverLogoComponent);
         }
         
@@ -657,6 +663,7 @@ public class FancyLauncherFrame extends LauncherFrame {
     protected WebpagePanel createNewsPanel() {
         WebpagePanel panel = super.createNewsPanel();
         panel.setBrowserBorder(new EmptyBorder(0, 0, 0, 0));
+        panel.setBackground(new Color(0, 0, 0, 0)); // Transparent background
         return panel;
     }
 
