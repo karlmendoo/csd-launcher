@@ -59,10 +59,8 @@ public class FancyLauncherFrame extends LauncherFrame {
     private static final long REFRESH_INTERVAL_MS = 45000; // 45 seconds
     
     // Social media URLs (configurable)
-    private static final String DISCORD_URL = "https://discord.gg/yourserver";
-    private static final String TWITTER_URL = "https://twitter.com/yourserver";
-    private static final String INSTAGRAM_URL = "https://instagram.com/yourserver";
-    private static final String YOUTUBE_URL = "https://youtube.com/yourserver";
+    private static final String DISCORD_URL = "https://discord.gg/gzMPSYytDD";
+    private static final String INSTAGRAM_URL = "https://instagram.com/charliekirk1776";
     // Custom colors - Modern palette (from problem statement)
     private static final Color GLASS_COLOR = new Color(20, 20, 20, (int)(0.85 * 255)); // rgba(20, 20, 20, 0.85)
     private static final Color PRIMARY_BLUE = new Color(0, 120, 212); // #0078D4
@@ -128,6 +126,10 @@ public class FancyLauncherFrame extends LauncherFrame {
         // Bottom bar: Status and controls
         JPanel bottomBar = createBottomControlBar();
         
+        // News panel in center
+        WebpagePanel newsPanel = createNewsPanel();
+        newsPanel.setOpaque(false);
+        
         // Use a container with proper layout
         JPanel topBar = new JPanel(new BorderLayout());
         topBar.setOpaque(false);
@@ -136,6 +138,7 @@ public class FancyLauncherFrame extends LauncherFrame {
         
         JPanel centerPanel = new JPanel(new BorderLayout());
         centerPanel.setOpaque(false);
+        centerPanel.add(newsPanel, BorderLayout.CENTER);
         centerPanel.add(rightSidebar, BorderLayout.EAST);
         
         mainPanel.add(topBar, BorderLayout.NORTH);
@@ -237,22 +240,10 @@ public class FancyLauncherFrame extends LauncherFrame {
         sidebar.add(discordBtn);
         sidebar.add(Box.createRigidArea(new Dimension(0, 10)));
         
-        // Twitter button
-        SocialLinkButton twitterBtn = new SocialLinkButton(IconFactory.createTwitterIcon(), "Twitter/X");
-        twitterBtn.addActionListener(e -> openURL(TWITTER_URL));
-        sidebar.add(twitterBtn);
-        sidebar.add(Box.createRigidArea(new Dimension(0, 10)));
-        
         // Instagram button
         SocialLinkButton instagramBtn = new SocialLinkButton(IconFactory.createInstagramIcon(), "Instagram");
         instagramBtn.addActionListener(e -> openURL(INSTAGRAM_URL));
         sidebar.add(instagramBtn);
-        sidebar.add(Box.createRigidArea(new Dimension(0, 10)));
-        
-        // YouTube button
-        SocialLinkButton youtubeBtn = new SocialLinkButton(IconFactory.createYouTubeIcon(), "YouTube");
-        youtubeBtn.addActionListener(e -> openURL(YOUTUBE_URL));
-        sidebar.add(youtubeBtn);
         
         return sidebar;
     }
@@ -262,7 +253,7 @@ public class FancyLauncherFrame extends LauncherFrame {
      */
     private JPanel createBottomControlBar() {
         GlassPanel bottomBar = new GlassPanel(new MigLayout("fill, insets 15 25 15 25", 
-            "[][][grow][][]", "[]"));
+            "[][][grow][][][]", "[]"));
         
         // PLAYERS indicator
         playerStatusIndicator = new StatusIndicator("Checking...", StatusIndicator.Status.UNKNOWN);
@@ -271,23 +262,6 @@ public class FancyLauncherFrame extends LauncherFrame {
         // MOJANG STATUS indicator
         mojangStatusIndicator = new StatusIndicator("Mojang Services", StatusIndicator.Status.UNKNOWN);
         bottomBar.add(mojangStatusIndicator, "gapright 20");
-        
-        // NEWS section (expandable indicator)
-        JLabel newsLabel = new JLabel("NEWS \u25B2");
-        newsLabel.setFont(newsLabel.getFont().deriveFont(Font.BOLD, 11f));
-        newsLabel.setForeground(TEXT_SECONDARY);
-        newsLabel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        newsLabel.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                // Toggle news panel expansion (simplified - just refresh news)
-                WebpagePanel webView = createNewsPanel();
-                if (webView != null) {
-                    webView.browse(launcher.getNewsURL(), false);
-                }
-            }
-        });
-        bottomBar.add(newsLabel, "");
         
         // Server selector and name
         JPanel serverPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
@@ -317,6 +291,12 @@ public class FancyLauncherFrame extends LauncherFrame {
         
         serverPanel.add(instanceSelector);
         bottomBar.add(serverPanel, "growx, pushx");
+        
+        // Self-update button (appears when update is available)
+        selfUpdateButton.setFont(selfUpdateButton.getFont().deriveFont(Font.BOLD, 12f));
+        selfUpdateButton.setPreferredSize(new Dimension(120, 40));
+        stylePillButton(selfUpdateButton, WARNING_ORANGE, Color.WHITE);
+        bottomBar.add(selfUpdateButton, "hidemode 3");
         
         // Large PLAY button
         launchButton.setText("PLAY");
