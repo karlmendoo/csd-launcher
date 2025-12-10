@@ -220,9 +220,9 @@ public class FancyLauncherFrame extends LauncherFrame {
         // Launcher Settings
         JMenuItem settingsItem = new JMenuItem("Launcher Settings...");
         settingsItem.addActionListener(e -> {
-            // Call the protected method from LauncherFrame
-            com.skcraft.launcher.dialog.ConfigurationDialog configDialog = 
-                new com.skcraft.launcher.dialog.ConfigurationDialog(this, launcher);
+            // Use the fancy configuration dialog
+            FancyConfigurationDialog configDialog = 
+                new FancyConfigurationDialog(this, launcher);
             configDialog.setVisible(true);
         });
         popup.add(settingsItem);
