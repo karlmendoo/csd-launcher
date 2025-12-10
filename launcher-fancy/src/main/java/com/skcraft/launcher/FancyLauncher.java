@@ -63,11 +63,11 @@ public class FancyLauncher {
                     JDialog.setDefaultLookAndFeelDecorated(true);
 
                     // Configure FlatLaf properties for modern styling
-                    UIManager.put("Button.arc", 10);
-                    UIManager.put("Component.arc", 10);
-                    UIManager.put("CheckBox.arc", 5);
+                    UIManager.put("Button.arc", 999);
+                    UIManager.put("Component.arc", 999);
+                    UIManager.put("TextComponent.arc", 999);
+                    UIManager.put("CheckBox.arc", 999);
                     UIManager.put("ProgressBar.arc", 10);
-                    UIManager.put("TextComponent.arc", 8);
                     UIManager.put("ScrollBar.thumbArc", 10);
                     UIManager.put("ScrollBar.thumbInsets", new Insets(2, 2, 2, 2));
                     
