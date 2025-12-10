@@ -81,8 +81,7 @@ public class FancyLauncherFrame extends LauncherFrame {
         super(launcher);
         this.launcher = launcher;
 
-        // Make window larger and frameless for modern immersive UI
-        setUndecorated(true);
+        // Make window larger for modern immersive UI
         setSize(1000, 650);
         setLocationRelativeTo(null);
 
@@ -129,18 +128,10 @@ public class FancyLauncherFrame extends LauncherFrame {
         // Bottom bar: Status and controls
         JPanel bottomBar = createBottomControlBar();
         
-        // Custom window controls (top-right corner)
-        JPanel windowControls = createWindowControls();
-        
-        // Assemble layout using layered approach
-        JLayeredPane layeredPane = new JLayeredPane();
-        layeredPane.setLayout(null);
-        
         // Use a container with proper layout
         JPanel topBar = new JPanel(new BorderLayout());
         topBar.setOpaque(false);
         topBar.add(topLeftPanel, BorderLayout.WEST);
-        topBar.add(windowControls, BorderLayout.NORTH);
         topBar.add(topRightPanel, BorderLayout.EAST);
         
         JPanel centerPanel = new JPanel(new BorderLayout());
@@ -336,71 +327,6 @@ public class FancyLauncherFrame extends LauncherFrame {
         
         return bottomBar;
     }
-    
-    /**
-     * Creates custom window controls (minimize, maximize, close).
-     */
-    private JPanel createWindowControls() {
-        JPanel panel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 10));
-        panel.setOpaque(false);
-        
-        // Minimize button
-        SocialLinkButton minimizeBtn = new SocialLinkButton(IconFactory.createMinimizeIcon(), "Minimize");
-        minimizeBtn.addActionListener(e -> setState(JFrame.ICONIFIED));
-        panel.add(minimizeBtn);
-        
-        // Maximize/Restore button
-        SocialLinkButton maximizeBtn = new SocialLinkButton(IconFactory.createMaximizeIcon(), "Maximize");
-        maximizeBtn.addActionListener(e -> {
-            if (getExtendedState() == JFrame.MAXIMIZED_BOTH) {
-                setExtendedState(JFrame.NORMAL);
-            } else {
-                setExtendedState(JFrame.MAXIMIZED_BOTH);
-            }
-        });
-        panel.add(maximizeBtn);
-        
-        // Close button
-        SocialLinkButton closeBtn = new SocialLinkButton(IconFactory.createCloseIcon(), "Close");
-        closeBtn.addActionListener(e -> {
-            dispose();
-            System.exit(0);
-        });
-        panel.add(closeBtn);
-        
-        // Add drag support for window movement
-        enableWindowDragging(panel);
-        
-        return panel;
-    }
-    
-    /**
-     * Enables dragging the window by clicking and dragging on a panel.
-     */
-    private Point dragOffset;
-    private void enableWindowDragging(JPanel panel) {
-        MouseAdapter dragAdapter = new MouseAdapter() {
-            @Override
-            public void mousePressed(MouseEvent e) {
-                dragOffset = e.getPoint();
-            }
-            
-            @Override
-            public void mouseDragged(MouseEvent e) {
-                if (dragOffset != null) {
-                    Point current = e.getLocationOnScreen();
-                    setLocation(current.x - dragOffset.x, current.y - dragOffset.y);
-                }
-            }
-        };
-        panel.addMouseListener(dragAdapter);
-        panel.addMouseMotionListener(dragAdapter);
-        
-        // Also enable dragging from the server branding area
-        container.addMouseListener(dragAdapter);
-        container.addMouseMotionListener(dragAdapter);
-    }
-
     
     /**
      * Opens a URL in the default browser.
