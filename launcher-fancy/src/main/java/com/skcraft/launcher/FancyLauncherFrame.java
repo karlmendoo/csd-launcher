@@ -18,9 +18,12 @@ import com.skcraft.launcher.swing.WebpagePanel;
 import lombok.NonNull;
 import net.miginfocom.swing.MigLayout;
 
+import javax.imageio.ImageIO;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.geom.Ellipse2D;
@@ -39,22 +42,26 @@ public class FancyLauncherFrame extends LauncherFrame {
     private final JComboBox<Instance> instanceSelector = new BetterComboBox<>();
     private final JLabel nameLabel = new JLabel();
     private final JLabel headLabel = new JLabel();
-    private final JLabel serverStatusLabel = new JLabel("Pinging...");
+    private final JLabel playerCountLabel = new JLabel("0/20");
+    private final JLabel serverStatusDot = new JLabel("●");
+    private final JLabel serverStatusLabel = new JLabel("Offline");
+    private final JButton newsToggleButton = new JButton("▲ NEWS");
+    private JPanel newsPanel;
+    private boolean newsExpanded = false;
     private JPanel container;
+    private Image logoImage;
 
     // Icons
     private final Icon instanceIcon = SwingHelper.createIcon(Launcher.class, "instance_icon.png", 16, 16);
     private final Icon downloadIcon = SwingHelper.createIcon(Launcher.class, "download_icon.png", 16, 16);
     
-    // Custom colors - Modern palette
-    private static final Color GLASS_COLOR = new Color(20, 20, 20, (int)(0.85 * 255)); // rgba(20, 20, 20, 0.85)
-    private static final Color HOVER_COLOR = new Color(255, 255, 255, 20); // rgba(255, 255, 255, 0.08)
-    private static final Color PRIMARY_BLUE = new Color(0, 120, 212); // #0078D4
-    private static final Color SUCCESS_GREEN = new Color(40, 167, 69); // #28a745
-    private static final Color WARNING_ORANGE = new Color(253, 126, 20); // #fd7e14
+    // Custom colors - Modern Helios palette
+    private static final Color SUCCESS_GREEN = new Color(92, 184, 92); // #5CB85C
+    private static final Color ERROR_RED = new Color(217, 83, 79); // #D9534F
     private static final Color TEXT_PRIMARY = new Color(255, 255, 255); // #FFFFFF
-    private static final Color TEXT_SECONDARY = new Color(176, 176, 176); // #B0B0B0
-    private static final Color BORDER_SUBTLE = new Color(255, 255, 255, (int)(0.1 * 255)); // rgba(255, 255, 255, 0.1)
+    private static final Color TEXT_SECONDARY = new Color(180, 180, 180); // #B4B4B4
+    private static final Color SEPARATOR_COLOR = new Color(100, 100, 100); // #646464
+    private static final Color NEWS_BG = new Color(0, 0, 0, 200); // rgba(0, 0, 0, 0.78)
 
     /**
      * Create a new frame.
@@ -65,72 +72,101 @@ public class FancyLauncherFrame extends LauncherFrame {
         super(launcher);
         this.launcher = launcher;
 
-        setSize(850, 550);
+        setSize(1000, 650);  // Larger window for immersive feel
         setLocationRelativeTo(null);
 
-        // We rebuild the UI entirely for the fancy version
-        container.removeAll();
-        // Fixed layout rows to prevent cutoff: [Header][Content][Footer]
-        container.setLayout(new MigLayout("fill, insets 0, gap 0", "[grow]", "[60!][grow][60!]"));
-
-        // 1. Top Bar (Logo + Account Manager)
-        // Modified columns to include server status: [Logo][Status][Spacer][Account]
-        JPanel topBar = new GlassPanel(new MigLayout("fill, insets 10 20 10 20", "[][][grow][right]", "[]"));
-        // Logo
-        JLabel logoLabel = new JLabel("Changelogs");
-        logoLabel.setFont(logoLabel.getFont().deriveFont(Font.BOLD, 18f));
-        logoLabel.setForeground(TEXT_PRIMARY);
-
-        // Server Status
-        serverStatusLabel.setFont(serverStatusLabel.getFont().deriveFont(Font.BOLD, 12f));
-        serverStatusLabel.setForeground(TEXT_SECONDARY);
-        
-        // Account Manager
-        JPanel accountPanel = createAccountPanel();
-        updateAccountInfo(); // Populate initial data
-        
-        topBar.add(logoLabel);
-        topBar.add(serverStatusLabel, "gapleft 20");
-        topBar.add(new JLabel("")); // Spacer
-        topBar.add(accountPanel);
-
-        // Start async ping
-        pingServer();
-
-        // 2. Center (Webpage) - Now full width
-        WebpagePanel webView = createNewsPanel();
-        webView.setOpaque(false);
-
-        // 3. Bottom Bar (Controls)
-        // Columns: [Refresh] [SelfUpdate] [Checkbox] [Selector(Grow)] [Options] [Launch]
-        JPanel bottomBar = new GlassPanel(new MigLayout("fill, insets 10 20 10 20", "[][][][grow][][]", "[]"));
-
-        // Style the Options button to be minimalist (Icon only)
-        optionsButton.setText("Settings");
-        optionsButton.setFont(optionsButton.getFont().deriveFont(Font.BOLD, 12f));
-        optionsButton.setToolTipText("Launcher Options");
-        optionsButton.setContentAreaFilled(true);
-        optionsButton.setBorder(BorderFactory.createEmptyBorder(8, 16, 8, 16));
-        optionsButton.setForeground(TEXT_SECONDARY);
-        optionsButton.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-
-        // Remove default action listeners (which opened config directly)
-        for (java.awt.event.ActionListener al : optionsButton.getActionListeners()) {
-            optionsButton.removeActionListener(al);
+        // Load logo image
+        try {
+            logoImage = ImageIO.read(FancyLauncherFrame.class.getResourceAsStream("icon.png"));
+        } catch (Exception e) {
+            logoImage = null;
         }
 
-        // Add menu popup behavior
-        optionsButton.addMouseListener(new MouseAdapter() {
+        // We rebuild the UI entirely for the Helios-style version
+        container.removeAll();
+        container.setLayout(new BorderLayout());
+        
+        // Main layered pane for floating elements
+        JLayeredPane layeredPane = new JLayeredPane() {
             @Override
-            public void mousePressed(MouseEvent e) {
-                showSettingsMenu(e.getComponent(), e.getX(), e.getY());
+            public void doLayout() {
+                super.doLayout();
+                int w = getWidth();
+                int h = getHeight();
+                
+                // Position components absolutely
+                if (getComponentCount() > 0) {
+                    // Background layer (layer 0)
+                    Component bg = getComponent(0);
+                    bg.setBounds(0, 0, w, h);
+                    
+                    // Top-left logo (layer 2)
+                    if (getComponentCount() > 1) {
+                        Component logo = getComponent(1);
+                        logo.setBounds(20, 20, 80, 80);
+                    }
+                    
+                    // Top-right account (layer 2)
+                    if (getComponentCount() > 2) {
+                        Component account = getComponent(2);
+                        Dimension accSize = account.getPreferredSize();
+                        account.setBounds(w - accSize.width - 20, 20, accSize.width, 64);
+                    }
+                    
+                    // Right sidebar (layer 3)
+                    if (getComponentCount() > 3) {
+                        Component sidebar = getComponent(3);
+                        Dimension sbSize = sidebar.getPreferredSize();
+                        sidebar.setBounds(w - sbSize.width - 20, 110, sbSize.width, h - 200);
+                    }
+                    
+                    // Bottom bar (layer 1)
+                    if (getComponentCount() > 4) {
+                        Component bottom = getComponent(4);
+                        bottom.setBounds(0, h - 60, w, 60);
+                    }
+                    
+                    // News panel (layer 4) - when visible
+                    if (getComponentCount() > 5) {
+                        Component news = getComponent(5);
+                        news.setBounds(20, h - 360, w - 40, 280);
+                    }
+                }
             }
-        });
-
+        };
+        
+        // Layer 0: Background - transparent background panel
+        JPanel backgroundContainer = new JPanel(new BorderLayout());
+        backgroundContainer.setOpaque(false);
+        layeredPane.add(backgroundContainer, Integer.valueOf(0));
+        
+        // Layer 2: Top-left logo
+        JPanel logoPanel = createLogoPanel();
+        layeredPane.add(logoPanel, Integer.valueOf(2));
+        
+        // Layer 2: Top-right account display
+        JPanel accountPanel = createAccountDisplay();
+        layeredPane.add(accountPanel, Integer.valueOf(2));
+        
+        // Layer 3: Right sidebar (settings icon)
+        JPanel sidebar = createRightSidebar();
+        layeredPane.add(sidebar, Integer.valueOf(3));
+        
+        // Layer 1: Bottom status bar
+        JPanel bottomBar = createBottomBar();
+        layeredPane.add(bottomBar, Integer.valueOf(1));
+        
+        // Layer 4: News panel (collapsible)
+        newsPanel = createNewsPanel2();
+        newsPanel.setVisible(false);
+        layeredPane.add(newsPanel, Integer.valueOf(4));
+        
+        container.add(layeredPane, BorderLayout.CENTER);
+        
         // Configure Instance Selector
         DefaultComboBoxModel<Instance> model = new DefaultComboBoxModel<>();
         instanceSelector.setModel(model);
-        instanceSelector.setRenderer(new InstanceComboRenderer());
+        instanceSelector.setRenderer(new ModpackComboRenderer());
         instanceSelector.addActionListener(e -> {
             // Sync selection with the invisible table so base logic works
             int index = instanceSelector.getSelectedIndex();
@@ -144,74 +180,215 @@ public class FancyLauncherFrame extends LauncherFrame {
         // Add listener to auto-refresh the dropdown when instances load
         getInstancesTable().getModel().addTableModelListener(e -> updateInstanceList());
         updateInstanceList(); // Initial population
-
-        bottomBar.add(refreshButton);
-        bottomBar.add(selfUpdateButton, "gapleft 5, hidemode 3");
-        bottomBar.add(updateCheck, "gapleft 10");
-        bottomBar.add(instanceSelector, "growx, width 200:300:400, gapright 10");
-        bottomBar.add(optionsButton);
-        bottomBar.add(launchButton, "w 100!, h 32!");
-
-        // Assemble using explicit cells to prevent overlapping/cutoff
-        container.add(topBar, "cell 0 0, grow");
-        container.add(webView, "cell 0 1, grow");
-        container.add(bottomBar, "cell 0 2, grow");
+        updateAccountInfo(); // Populate initial account data
         
-        SwingHelper.removeOpaqueness(updateCheck);
-        updateCheck.setForeground(TEXT_PRIMARY);
-        
-        // Style buttons with pill-shaped appearance
-        stylePillButton(launchButton, new Color(34, 139, 34), Color.WHITE);      // Green Play
-        stylePillButton(refreshButton, new Color(60, 60, 60), Color.WHITE);       // Gray
-        stylePillButton(optionsButton, new Color(60, 60, 60), Color.WHITE);       // Gray
-        stylePillButton(selfUpdateButton, new Color(60, 60, 60), Color.WHITE);    // Gray
+        // Start async server ping
+        pingServer();
     }
 
-    private void styleButton(JButton button) {
-        button.setForeground(TEXT_PRIMARY);
-        button.setFocusPainted(false);
-        button.setBorder(BorderFactory.createEmptyBorder(8, 16, 8, 16));
-        button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-    }
-
-    private void stylePillButton(JButton button, Color bgColor, Color fgColor) {
-        button.setContentAreaFilled(false);
-        button.setBorderPainted(false);
-        button.setFocusPainted(false);
-        button.setBackground(bgColor);
-        button.setForeground(fgColor);
-        button.setFont(button.getFont().deriveFont(Font.BOLD, 12f));
-        button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        
-        button.setUI(new javax.swing.plaf.basic.BasicButtonUI() {
+    private JPanel createLogoPanel() {
+        JPanel panel = new JPanel() {
             @Override
-            public void paint(Graphics g, JComponent c) {
+            protected void paintComponent(Graphics g) {
+                super.paintComponent(g);
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                 
-                AbstractButton b = (AbstractButton) c;
-                int arc = c.getHeight();
+                // Draw circular border (white ring)
+                g2.setColor(Color.WHITE);
+                g2.setStroke(new BasicStroke(3));
+                g2.drawOval(2, 2, getWidth()-5, getHeight()-5);
                 
-                if (b.getModel().isPressed()) {
-                    g2.setColor(b.getBackground().darker());
-                } else if (b.getModel().isRollover()) {
-                    g2.setColor(b.getBackground().brighter());
-                } else {
-                    g2.setColor(b.getBackground());
+                // Draw logo image inside circle
+                if (logoImage != null) {
+                    g2.setClip(new Ellipse2D.Float(5, 5, getWidth()-10, getHeight()-10));
+                    g2.drawImage(logoImage, 5, 5, getWidth()-10, getHeight()-10, null);
                 }
-                g2.fillRoundRect(0, 0, c.getWidth(), c.getHeight(), arc, arc);
-                
-                g2.setColor(b.getForeground());
-                g2.setFont(b.getFont());
-                FontMetrics fm = g2.getFontMetrics();
-                String text = b.getText();
-                int x = (c.getWidth() - fm.stringWidth(text)) / 2;
-                int y = (c.getHeight() + fm.getAscent() - fm.getDescent()) / 2;
-                g2.drawString(text, x, y);
-                
                 g2.dispose();
             }
+        };
+        panel.setOpaque(false);
+        panel.setPreferredSize(new Dimension(80, 80));
+        return panel;
+    }
+    
+    private JPanel createAccountDisplay() {
+        JPanel panel = new JPanel(new MigLayout("insets 0, gap 10", "[right][64!]", "[]"));
+        panel.setOpaque(false);
+        
+        // Username label
+        nameLabel.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        nameLabel.setForeground(Color.WHITE);
+        
+        // Circular avatar with ring
+        headLabel.setPreferredSize(new Dimension(64, 64));
+        
+        panel.add(nameLabel);
+        panel.add(headLabel);
+        
+        panel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        panel.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                AccountSelectDialog.showAccountRequest(FancyLauncherFrame.this, launcher);
+                updateAccountInfo();
+            }
         });
+        
+        return panel;
+    }
+    
+    private JPanel createRightSidebar() {
+        JPanel panel = new JPanel(new MigLayout("insets 10, gap 0, flowy", "[center]", "[]15[]"));
+        panel.setOpaque(false);
+        
+        // Settings button
+        JButton settingsBtn = createIconButton("⚙", "Settings", null);
+        settingsBtn.addActionListener(e -> showSettingsMenu(settingsBtn, 0, settingsBtn.getHeight()));
+        
+        panel.add(settingsBtn);
+        
+        return panel;
+    }
+
+    private JButton createIconButton(String icon, String tooltip, ActionListener action) {
+        JButton btn = new JButton(icon);
+        btn.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 24));
+        btn.setForeground(Color.WHITE);
+        btn.setBackground(new Color(0, 0, 0, 0));
+        btn.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        btn.setContentAreaFilled(false);
+        btn.setFocusPainted(false);
+        btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        btn.setToolTipText(tooltip);
+        if (action != null) {
+            btn.addActionListener(action);
+        }
+        
+        // Hover effect
+        btn.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                btn.setForeground(new Color(200, 200, 200));
+            }
+            @Override
+            public void mouseExited(MouseEvent e) {
+                btn.setForeground(Color.WHITE);
+            }
+        });
+        
+        return btn;
+    }
+    
+    private JPanel createBottomBar() {
+        JPanel panel = new JPanel(new MigLayout("insets 15 30 15 30, gap 0", 
+            "[][][10!][][10!][][grow, center][][10!][][]", "[center]"));
+        panel.setOpaque(false);
+        
+        // Players count
+        JLabel playersHeading = new JLabel("PLAYERS");
+        playersHeading.setFont(new Font("Segoe UI", Font.BOLD, 11));
+        playersHeading.setForeground(TEXT_SECONDARY);
+        
+        playerCountLabel.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+        playerCountLabel.setForeground(Color.WHITE);
+        
+        // Separator
+        JLabel sep1 = createSeparator();
+        
+        // Server status
+        serverStatusDot.setForeground(ERROR_RED); // Default to red
+        
+        serverStatusLabel.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+        serverStatusLabel.setForeground(Color.WHITE);
+        
+        // Separator
+        JLabel sep2 = createSeparator();
+        
+        // News toggle with arrow
+        newsToggleButton.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        newsToggleButton.setForeground(Color.WHITE);
+        newsToggleButton.setContentAreaFilled(false);
+        newsToggleButton.setBorderPainted(false);
+        newsToggleButton.setFocusPainted(false);
+        newsToggleButton.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        newsToggleButton.addActionListener(e -> toggleNewsPanel());
+        
+        // PLAY button - Large and prominent
+        launchButton.setText("PLAY");
+        launchButton.setFont(new Font("Segoe UI", Font.BOLD, 28));
+        launchButton.setForeground(Color.WHITE);
+        launchButton.setContentAreaFilled(false);
+        launchButton.setBorderPainted(false);
+        launchButton.setFocusPainted(false);
+        launchButton.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        // Hover glow effect
+        launchButton.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                launchButton.setForeground(new Color(100, 255, 100));
+            }
+            @Override
+            public void mouseExited(MouseEvent e) {
+                launchButton.setForeground(Color.WHITE);
+            }
+        });
+        
+        // Separator
+        JLabel sep3 = createSeparator();
+        
+        // Modpack selector dot
+        JLabel modpackDot = new JLabel("●");
+        modpackDot.setForeground(SUCCESS_GREEN);
+        
+        // Style the modpack selector
+        instanceSelector.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        instanceSelector.setForeground(Color.WHITE);
+        instanceSelector.setBackground(new Color(40, 40, 40));
+        
+        // Layout
+        panel.add(playersHeading);
+        panel.add(playerCountLabel, "gapleft 5");
+        panel.add(sep1, "gapleft 15, gapright 15");
+        panel.add(serverStatusDot);
+        panel.add(serverStatusLabel, "gapleft 5");
+        panel.add(sep2, "gapleft 15, gapright 15");
+        panel.add(newsToggleButton);
+        panel.add(launchButton, "gapleft 30, gapright 30");
+        panel.add(sep3, "gapleft 15, gapright 15");
+        panel.add(modpackDot);
+        panel.add(instanceSelector, "gapleft 5, w 180!");
+        
+        return panel;
+    }
+
+    private JLabel createSeparator() {
+        JLabel sep = new JLabel("|");
+        sep.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        sep.setForeground(SEPARATOR_COLOR);
+        return sep;
+    }
+    
+    private JPanel createNewsPanel2() {
+        JPanel panel = new JPanel(new MigLayout("fill, insets 20", "[grow]", "[grow]"));
+        panel.setBackground(NEWS_BG);
+        panel.setVisible(false);
+        
+        // Changelog content
+        WebpagePanel changelog = createNewsPanel();
+        changelog.setOpaque(false);
+        changelog.setBrowserBorder(new EmptyBorder(0, 0, 0, 0));
+        
+        panel.add(changelog, "grow");
+        
+        return panel;
+    }
+
+    private void toggleNewsPanel() {
+        newsExpanded = !newsExpanded;
+        newsPanel.setVisible(newsExpanded);
+        // Update arrow direction on toggle button
+        newsToggleButton.setText(newsExpanded ? "▼ NEWS" : "▲ NEWS");
     }
 
     private void showSettingsMenu(Component invoker, int x, int y) {
@@ -220,7 +397,6 @@ public class FancyLauncherFrame extends LauncherFrame {
         // Launcher Settings
         JMenuItem settingsItem = new JMenuItem("Launcher Settings...");
         settingsItem.addActionListener(e -> {
-            // Call the protected method from LauncherFrame
             com.skcraft.launcher.dialog.ConfigurationDialog configDialog = 
                 new com.skcraft.launcher.dialog.ConfigurationDialog(this, launcher);
             configDialog.setVisible(true);
@@ -298,7 +474,7 @@ public class FancyLauncherFrame extends LauncherFrame {
                 ByteArrayOutputStream b = new ByteArrayOutputStream();
                 DataOutputStream handshake = new DataOutputStream(b);
                 handshake.writeByte(0x00); // Packet ID
-                writeVarInt(handshake, 47); // Protocol Version (1.8 is 47, generally accepted for ping)
+                writeVarInt(handshake, 47); // Protocol Version (1.8 is 47)
                 writeVarInt(handshake, host.length());
                 handshake.write(host.getBytes(StandardCharsets.UTF_8));
                 handshake.writeShort(port);
@@ -327,14 +503,16 @@ public class FancyLauncherFrame extends LauncherFrame {
                 int max = players.get("max").asInt();
 
                 SwingUtilities.invokeLater(() -> {
-                    serverStatusLabel.setText("\u25CF " + online + "/" + max + " Online");
-                    serverStatusLabel.setForeground(new Color(92, 184, 92)); // Success Green
+                    playerCountLabel.setText(online + "/" + max);
+                    serverStatusDot.setForeground(SUCCESS_GREEN);
+                    serverStatusLabel.setText("Online");
                 });
 
             } catch (Exception e) {
                 SwingUtilities.invokeLater(() -> {
-                    serverStatusLabel.setText("\u25CF Offline");
-                    serverStatusLabel.setForeground(new Color(217, 83, 79)); // Error Red
+                    playerCountLabel.setText("0/0");
+                    serverStatusDot.setForeground(ERROR_RED);
+                    serverStatusLabel.setText("Offline");
                 });
             }
         });
@@ -363,80 +541,37 @@ public class FancyLauncherFrame extends LauncherFrame {
         return i;
     }
 
-    private JPanel createAccountPanel() {
-        JPanel panel = new JPanel(new MigLayout("insets 5, fill", "[right][40!]", "[]")) {
-            @Override
-            protected void paintComponent(Graphics g) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                
-                if (isOpaque() && getBackground() != null) {
-                    g2.setColor(getBackground());
-                    g2.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
-                }
-                g2.dispose();
-                super.paintComponent(g);
-            }
-        };
-        panel.setOpaque(false);
-        panel.setBackground(new Color(0, 0, 0, 0));
-        panel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-
-        nameLabel.setFont(nameLabel.getFont().deriveFont(Font.BOLD));
-        nameLabel.setForeground(TEXT_PRIMARY);
-
-        panel.add(nameLabel);
-        panel.add(headLabel);
-
-        panel.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                AccountSelectDialog.showAccountRequest(FancyLauncherFrame.this, launcher);
-                updateAccountInfo();
-            }
-
-            @Override
-            public void mouseEntered(MouseEvent e) {
-                panel.setOpaque(true);
-                panel.setBackground(new Color(70, 70, 70)); // Solid color, not transparent
-                panel.repaint();
-            }
-
-            @Override
-            public void mouseExited(MouseEvent e) {
-                panel.setOpaque(false);
-                panel.setBackground(new Color(0, 0, 0, 0));
-                panel.repaint();
-            }
-        });
-
-        return panel;
-    }
-
     private void updateAccountInfo() {
         AccountList accounts = launcher.getAccounts();
         String username = "Guest";
-        Icon headIcon = SwingHelper.createIcon(Launcher.class, "default_skin.png", 32, 32);
+        Icon headIcon = SwingHelper.createIcon(Launcher.class, "default_skin.png", 64, 64);
 
         if (accounts.getSize() > 0) {
             SavedSession session = accounts.getElementAt(0);
             username = session.getUsername();
             if (session.getAvatarImage() != null) {
                 ImageIcon raw = new ImageIcon(session.getAvatarImage());
-                headIcon = new ImageIcon(getCircularImage(raw.getImage(), 32, 32));
+                headIcon = new ImageIcon(getCircularImageWithBorder(raw.getImage(), 64, 64));
             }
         }
 
-        nameLabel.setText("Welcome, " + username);
+        nameLabel.setText(username);
         headLabel.setIcon(headIcon);
     }
 
-    private Image getCircularImage(Image img, int w, int h) {
+    private Image getCircularImageWithBorder(Image img, int w, int h) {
         BufferedImage avatar = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g2 = avatar.createGraphics();
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g2.setClip(new Ellipse2D.Float(0, 0, w, h));
-        g2.drawImage(img, 0, 0, w, h, null);
+        
+        // Draw white border ring
+        g2.setColor(Color.WHITE);
+        g2.setStroke(new BasicStroke(2));
+        g2.drawOval(1, 1, w-3, h-3);
+        
+        // Clip to circle and draw image
+        g2.setClip(new Ellipse2D.Float(3, 3, w-6, h-6));
+        g2.drawImage(img, 3, 3, w-6, h-6, null);
         g2.dispose();
         return avatar;
     }
@@ -458,22 +593,16 @@ public class FancyLauncherFrame extends LauncherFrame {
         Instance instance = (Instance) instanceSelector.getSelectedItem();
         if (instance != null) {
             if (!instance.isInstalled()) {
-                launchButton.setText("Install");
-                launchButton.setBackground(PRIMARY_BLUE);
-                launchButton.setForeground(TEXT_PRIMARY);
+                launchButton.setText("INSTALL");
             } else if (instance.isUpdatePending()) {
-                launchButton.setText("Update");
-                launchButton.setBackground(WARNING_ORANGE);
-                launchButton.setForeground(TEXT_PRIMARY);
+                launchButton.setText("UPDATE");
             } else {
-                launchButton.setText("Play");
-                launchButton.setBackground(SUCCESS_GREEN);
-                launchButton.setForeground(TEXT_PRIMARY);
+                launchButton.setText("PLAY");
             }
         }
     }
 
-    private class InstanceComboRenderer extends DefaultListCellRenderer {
+    private class ModpackComboRenderer extends DefaultListCellRenderer {
         @Override
         public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
             super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
@@ -484,7 +613,7 @@ public class FancyLauncherFrame extends LauncherFrame {
                 if (instance.isLocal() && instance.isInstalled()) {
                     setIcon(instanceIcon);
                     if (instance.isUpdatePending()) {
-                        setText(instance.getTitle() + " (Update Available)");
+                        setText(instance.getTitle() + " (Update)");
                     }
                 } else {
                     setIcon(downloadIcon);
@@ -492,23 +621,6 @@ public class FancyLauncherFrame extends LauncherFrame {
                 }
             }
             return this;
-        }
-    }
-
-    private static class GlassPanel extends JPanel {
-        public GlassPanel(LayoutManager layout) {
-            super(layout);
-            setOpaque(false);
-        }
-
-        @Override
-        protected void paintComponent(Graphics g) {
-            Graphics2D g2 = (Graphics2D) g.create();
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g2.setColor(GLASS_COLOR);
-            g2.fillRect(0, 0, getWidth(), getHeight());
-            g2.dispose();
-            super.paintComponent(g);
         }
     }
 }
