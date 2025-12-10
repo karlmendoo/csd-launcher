@@ -25,7 +25,6 @@ import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.awt.geom.Ellipse2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
@@ -55,9 +54,17 @@ public class FancyLauncherFrame extends LauncherFrame {
     private final Icon instanceIcon = SwingHelper.createIcon(Launcher.class, "instance_icon.png", 16, 16);
     private final Icon downloadIcon = SwingHelper.createIcon(Launcher.class, "download_icon.png", 16, 16);
     
+    // Refresh intervals for periodic status updates
+    private static final long INITIAL_REFRESH_DELAY_MS = 30000; // 30 seconds
+    private static final long REFRESH_INTERVAL_MS = 45000; // 45 seconds
+    
+    // Social media URLs (configurable)
+    private static final String DISCORD_URL = "https://discord.gg/yourserver";
+    private static final String TWITTER_URL = "https://twitter.com/yourserver";
+    private static final String INSTAGRAM_URL = "https://instagram.com/yourserver";
+    private static final String YOUTUBE_URL = "https://youtube.com/yourserver";
     // Custom colors - Modern palette (from problem statement)
     private static final Color GLASS_COLOR = new Color(20, 20, 20, (int)(0.85 * 255)); // rgba(20, 20, 20, 0.85)
-    private static final Color HOVER_COLOR = new Color(255, 255, 255, 20); // rgba(255, 255, 255, 0.08)
     private static final Color PRIMARY_BLUE = new Color(0, 120, 212); // #0078D4
     private static final Color SUCCESS_GREEN = new Color(40, 167, 69); // #28a745
     private static final Color WARNING_ORANGE = new Color(253, 126, 20); // #fd7e14
@@ -235,25 +242,25 @@ public class FancyLauncherFrame extends LauncherFrame {
         
         // Discord button
         SocialLinkButton discordBtn = new SocialLinkButton(IconFactory.createDiscordIcon(), "Discord");
-        discordBtn.addActionListener(e -> openURL("https://discord.gg/yourserver"));
+        discordBtn.addActionListener(e -> openURL(DISCORD_URL));
         sidebar.add(discordBtn);
         sidebar.add(Box.createRigidArea(new Dimension(0, 10)));
         
         // Twitter button
         SocialLinkButton twitterBtn = new SocialLinkButton(IconFactory.createTwitterIcon(), "Twitter/X");
-        twitterBtn.addActionListener(e -> openURL("https://twitter.com/yourserver"));
+        twitterBtn.addActionListener(e -> openURL(TWITTER_URL));
         sidebar.add(twitterBtn);
         sidebar.add(Box.createRigidArea(new Dimension(0, 10)));
         
         // Instagram button
         SocialLinkButton instagramBtn = new SocialLinkButton(IconFactory.createInstagramIcon(), "Instagram");
-        instagramBtn.addActionListener(e -> openURL("https://instagram.com/yourserver"));
+        instagramBtn.addActionListener(e -> openURL(INSTAGRAM_URL));
         sidebar.add(instagramBtn);
         sidebar.add(Box.createRigidArea(new Dimension(0, 10)));
         
         // YouTube button
         SocialLinkButton youtubeBtn = new SocialLinkButton(IconFactory.createYouTubeIcon(), "YouTube");
-        youtubeBtn.addActionListener(e -> openURL("https://youtube.com/yourserver"));
+        youtubeBtn.addActionListener(e -> openURL(YOUTUBE_URL));
         sidebar.add(youtubeBtn);
         
         return sidebar;
@@ -419,7 +426,7 @@ public class FancyLauncherFrame extends LauncherFrame {
                 pingServer();
                 checkMojangStatus();
             }
-        }, 30000, 45000); // Refresh every 45 seconds after initial 30-second delay
+        }, INITIAL_REFRESH_DELAY_MS, REFRESH_INTERVAL_MS);
     }
     
     /**
@@ -730,18 +737,8 @@ public class FancyLauncherFrame extends LauncherFrame {
 
         nameLabel.setText(username);
         if (headComponent != null) {
-            headComponent.setImage(getCircularImage(headImage, 40, 40));
+            headComponent.setImage(headImage);
         }
-    }
-
-    private Image getCircularImage(Image img, int w, int h) {
-        BufferedImage avatar = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g2 = avatar.createGraphics();
-        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g2.setClip(new Ellipse2D.Float(0, 0, w, h));
-        g2.drawImage(img, 0, 0, w, h, null);
-        g2.dispose();
-        return avatar;
     }
 
     @Override
