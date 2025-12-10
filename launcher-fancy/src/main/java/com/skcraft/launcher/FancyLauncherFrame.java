@@ -46,9 +46,15 @@ public class FancyLauncherFrame extends LauncherFrame {
     private final Icon instanceIcon = SwingHelper.createIcon(Launcher.class, "instance_icon.png", 16, 16);
     private final Icon downloadIcon = SwingHelper.createIcon(Launcher.class, "download_icon.png", 16, 16);
     
-    // Custom colors
-    private static final Color GLASS_COLOR = new Color(10, 10, 10, 140);
-    private static final Color HOVER_COLOR = new Color(255, 255, 255, 20);
+    // Custom colors - Modern palette
+    private static final Color GLASS_COLOR = new Color(20, 20, 20, (int)(0.85 * 255)); // rgba(20, 20, 20, 0.85)
+    private static final Color HOVER_COLOR = new Color(255, 255, 255, 20); // rgba(255, 255, 255, 0.08)
+    private static final Color PRIMARY_BLUE = new Color(0, 120, 212); // #0078D4
+    private static final Color SUCCESS_GREEN = new Color(40, 167, 69); // #28a745
+    private static final Color WARNING_ORANGE = new Color(253, 126, 20); // #fd7e14
+    private static final Color TEXT_PRIMARY = new Color(255, 255, 255); // #FFFFFF
+    private static final Color TEXT_SECONDARY = new Color(176, 176, 176); // #B0B0B0
+    private static final Color BORDER_SUBTLE = new Color(255, 255, 255, (int)(0.1 * 255)); // rgba(255, 255, 255, 0.1)
 
     /**
      * Create a new frame.
@@ -73,11 +79,11 @@ public class FancyLauncherFrame extends LauncherFrame {
         // Logo
         JLabel logoLabel = new JLabel("Changelogs");
         logoLabel.setFont(logoLabel.getFont().deriveFont(Font.BOLD, 18f));
-        logoLabel.setForeground(Color.WHITE);
+        logoLabel.setForeground(TEXT_PRIMARY);
 
         // Server Status
         serverStatusLabel.setFont(serverStatusLabel.getFont().deriveFont(Font.BOLD, 12f));
-        serverStatusLabel.setForeground(new Color(200, 200, 200));
+        serverStatusLabel.setForeground(TEXT_SECONDARY);
         
         // Account Manager
         JPanel accountPanel = createAccountPanel();
@@ -100,12 +106,12 @@ public class FancyLauncherFrame extends LauncherFrame {
         JPanel bottomBar = new GlassPanel(new MigLayout("fill, insets 10 20 10 20", "[][][][grow][][]", "[]"));
 
         // Style the Options button to be minimalist (Icon only)
-        optionsButton.setText("Settings"); // Unicode Gear Icon
+        optionsButton.setText("Settings");
         optionsButton.setFont(optionsButton.getFont().deriveFont(Font.BOLD, 12f));
         optionsButton.setToolTipText("Launcher Options");
-        optionsButton.setContentAreaFilled(false);
-        optionsButton.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
-        optionsButton.setForeground(new Color(200, 200, 200));
+        optionsButton.setContentAreaFilled(true);
+        optionsButton.setBorder(BorderFactory.createEmptyBorder(8, 16, 8, 16));
+        optionsButton.setForeground(TEXT_SECONDARY);
         optionsButton.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 
         // Remove default action listeners (which opened config directly)
@@ -152,7 +158,19 @@ public class FancyLauncherFrame extends LauncherFrame {
         container.add(bottomBar, "cell 0 2, grow");
         
         SwingHelper.removeOpaqueness(updateCheck);
-        updateCheck.setForeground(Color.WHITE);
+        updateCheck.setForeground(TEXT_PRIMARY);
+        
+        // Style buttons with modern appearance
+        styleButton(launchButton);
+        styleButton(refreshButton);
+        styleButton(selfUpdateButton);
+    }
+
+    private void styleButton(JButton button) {
+        button.setForeground(TEXT_PRIMARY);
+        button.setFocusPainted(false);
+        button.setBorder(BorderFactory.createEmptyBorder(8, 16, 8, 16));
+        button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
     }
 
     private void showSettingsMenu(Component invoker, int x, int y) {
@@ -320,7 +338,7 @@ public class FancyLauncherFrame extends LauncherFrame {
         panel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 
         nameLabel.setFont(nameLabel.getFont().deriveFont(Font.BOLD));
-        nameLabel.setForeground(Color.WHITE);
+        nameLabel.setForeground(TEXT_PRIMARY);
 
         panel.add(nameLabel);
         panel.add(headLabel);
@@ -396,19 +414,16 @@ public class FancyLauncherFrame extends LauncherFrame {
         if (instance != null) {
             if (!instance.isInstalled()) {
                 launchButton.setText("Install");
-                // Blue for Install
-                launchButton.setBackground(new Color(0, 120, 215));
-                launchButton.setForeground(Color.WHITE);
+                launchButton.setBackground(PRIMARY_BLUE);
+                launchButton.setForeground(TEXT_PRIMARY);
             } else if (instance.isUpdatePending()) {
                 launchButton.setText("Update");
-                // Orange for Update
-                launchButton.setBackground(new Color(255, 140, 0));
-                launchButton.setForeground(Color.WHITE);
+                launchButton.setBackground(WARNING_ORANGE);
+                launchButton.setForeground(TEXT_PRIMARY);
             } else {
                 launchButton.setText("Play");
-                // Green for Play
-                launchButton.setBackground(new Color(34, 139, 34));
-                launchButton.setForeground(Color.WHITE);
+                launchButton.setBackground(SUCCESS_GREEN);
+                launchButton.setForeground(TEXT_PRIMARY);
             }
         }
     }
