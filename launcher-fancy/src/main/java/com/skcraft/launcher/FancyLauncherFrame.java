@@ -160,10 +160,11 @@ public class FancyLauncherFrame extends LauncherFrame {
         SwingHelper.removeOpaqueness(updateCheck);
         updateCheck.setForeground(TEXT_PRIMARY);
         
-        // Style buttons with modern appearance
-        styleButton(launchButton);
-        styleButton(refreshButton);
-        styleButton(selfUpdateButton);
+        // Style buttons with pill-shaped appearance
+        stylePillButton(launchButton, new Color(34, 139, 34), Color.WHITE);      // Green Play
+        stylePillButton(refreshButton, new Color(60, 60, 60), Color.WHITE);       // Gray
+        stylePillButton(optionsButton, new Color(60, 60, 60), Color.WHITE);       // Gray
+        stylePillButton(selfUpdateButton, new Color(60, 60, 60), Color.WHITE);    // Gray
     }
 
     private void styleButton(JButton button) {
@@ -171,6 +172,46 @@ public class FancyLauncherFrame extends LauncherFrame {
         button.setFocusPainted(false);
         button.setBorder(BorderFactory.createEmptyBorder(8, 16, 8, 16));
         button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+    }
+
+    private void stylePillButton(JButton button, Color bgColor, Color fgColor) {
+        button.setContentAreaFilled(false);
+        button.setBorderPainted(false);
+        button.setFocusPainted(false);
+        button.setBackground(bgColor);
+        button.setForeground(fgColor);
+        button.setFont(button.getFont().deriveFont(Font.BOLD, 12f));
+        button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        
+        button.setUI(new javax.swing.plaf.basic.BasicButtonUI() {
+            @Override
+            public void paint(Graphics g, JComponent c) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                
+                AbstractButton b = (AbstractButton) c;
+                int arc = c.getHeight();
+                
+                if (b.getModel().isPressed()) {
+                    g2.setColor(b.getBackground().darker());
+                } else if (b.getModel().isRollover()) {
+                    g2.setColor(b.getBackground().brighter());
+                } else {
+                    g2.setColor(b.getBackground());
+                }
+                g2.fillRoundRect(0, 0, c.getWidth(), c.getHeight(), arc, arc);
+                
+                g2.setColor(b.getForeground());
+                g2.setFont(b.getFont());
+                FontMetrics fm = g2.getFontMetrics();
+                String text = b.getText();
+                int x = (c.getWidth() - fm.stringWidth(text)) / 2;
+                int y = (c.getHeight() + fm.getAscent() - fm.getDescent()) / 2;
+                g2.drawString(text, x, y);
+                
+                g2.dispose();
+            }
+        });
     }
 
     private void showSettingsMenu(Component invoker, int x, int y) {
@@ -326,15 +367,19 @@ public class FancyLauncherFrame extends LauncherFrame {
         JPanel panel = new JPanel(new MigLayout("insets 5, fill", "[right][40!]", "[]")) {
             @Override
             protected void paintComponent(Graphics g) {
-                if (getBackground() != null && isOpaque()) {
-                    g.setColor(getBackground());
-                    g.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                
+                if (isOpaque() && getBackground() != null) {
+                    g2.setColor(getBackground());
+                    g2.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
                 }
+                g2.dispose();
                 super.paintComponent(g);
             }
         };
-        panel.setOpaque(false); // We handle painting
-        panel.setBackground(new Color(0,0,0,0));
+        panel.setOpaque(false);
+        panel.setBackground(new Color(0, 0, 0, 0));
         panel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 
         nameLabel.setFont(nameLabel.getFont().deriveFont(Font.BOLD));
@@ -353,14 +398,14 @@ public class FancyLauncherFrame extends LauncherFrame {
             @Override
             public void mouseEntered(MouseEvent e) {
                 panel.setOpaque(true);
-                panel.setBackground(HOVER_COLOR);
+                panel.setBackground(new Color(70, 70, 70)); // Solid color, not transparent
                 panel.repaint();
             }
 
             @Override
             public void mouseExited(MouseEvent e) {
                 panel.setOpaque(false);
-                panel.setBackground(new Color(0,0,0,0));
+                panel.setBackground(new Color(0, 0, 0, 0));
                 panel.repaint();
             }
         });
